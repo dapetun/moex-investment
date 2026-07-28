@@ -18,6 +18,11 @@ from moex_portfolio.analytics import (
     monte_carlo_simulation,
     var_historical,
 )
+from moex_portfolio.black_litterman import (
+    create_views_from_correlation,
+    optimize_black_litterman,
+)
+from moex_portfolio.hrp import optimize_hrp
 from moex_portfolio.charts import (
     plot_efficient_frontier_plotly,
     plot_equity_curve_plotly,
@@ -105,6 +110,10 @@ transaction_cost_bps = st.sidebar.number_input(
     min_value=0, value=int(TRANSACTION_COST_BPS), step=1,
 )
 
+bl_tau = st.sidebar.slider("Black-Litterman tau", 0.01, 0.5, 0.05, 0.01)
+bl_n_views = st.sidebar.slider("BL: auto-views count", 1, 10, 5, 1)
+hrp_method = st.sidebar.selectbox("HRP clustering", ["single", "complete", "average"], index=0)
+
 use_cache = st.sidebar.checkbox("Use cached data", value=True)
 
 # ─── Основной пайплайн ───────────────────────────────────────────────
@@ -149,9 +158,19 @@ if st.sidebar.button("Run Optimization", type="primary"):
 
     metrics = portfolio_metrics(opt_result["weights"], mean_ret, cov, returns=clique_returns)
 
+    # Black-Litterman
+    P, Q = create_views_from_correlation(clique_returns, corr.loc[clique, clique], top_n=bl_n_views)
+    bl_result = optimize_black_litterman(
+        clique_returns, P, Q,
+        tau=bl_tau, max_weight=max_weight,
+    )
+
+    # HRP
+    hrp_result = optimize_hrp(clique_returns, max_weight=max_weight)
+
     # ─── Tabs ─────────────────────────────────────────────────────
-    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress = st.tabs(
-        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test"]
+    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress, tab_bl, tab_hrp = st.tabs(
+        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test", "Black-Litterman", "HRP"]
     )
 
     with tab_overview:
@@ -289,6 +308,64 @@ if st.sidebar.button("Run Optimization", type="primary"):
                 st.metric("Worst Day", f"{r.worst_day:.2%} on {r.worst_day_date}")
                 st.metric("Recovery", f"{r.recovery_days} days" if r.recovery_days else "Not recovered")
 
+    with tab_bl:
+        st.subheader("Black-Litterman Model")
+        st.markdown("Combines market equilibrium with investor views for more stable portfolio weights.")
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Annual Return", f"{bl_result['return']:.2%}")
+        col2.metric("Annual Volatility", f"{bl_result['volatility']:.2%}")
+        col3.metric("Sharpe Ratio", f"{bl_result['sharpe']:.3f}")
+        col4.metric("Views Used", bl_n_views)
+
+        st.plotly_chart(plot_weights_bar_plotly(clique, bl_result["weights"], title="Black-Litterman Weights"), use_container_width=True)
+
+        st.subheader("Views Matrix (P)")
+        p_df = pd.DataFrame(P, columns=clique, index=[f"View {i+1}" for i in range(P.shape[0])])
+        st.dataframe(p_df, use_container_width=True)
+
+        st.subheader("View Returns (Q)")
+        q_df = pd.DataFrame({"View": [f"View {i+1}" for i in range(len(Q))], "Expected Return (daily)": Q})
+        st.dataframe(q_df, use_container_width=True)
+
+        st.subheader("Comparison: Markowitz vs Black-Litterman")
+        comp_df = pd.DataFrame({
+            "Metric": ["Return", "Volatility", "Sharpe"],
+            "Markowitz (Max Sharpe)": [f"{opt_result['return']:.2%}", f"{opt_result['volatility']:.2%}", f"{opt_result['sharpe']:.3f}"],
+            "Black-Litterman": [f"{bl_result['return']:.2%}", f"{bl_result['volatility']:.2%}", f"{bl_result['sharpe']:.3f}"],
+        })
+        st.dataframe(comp_df, use_container_width=True)
+
+    with tab_hrp:
+        st.subheader("Hierarchical Risk Parity (HRP)")
+        st.markdown("Clustering-based portfolio allocation — no need for matrix inversion.")
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Annual Return", f"{hrp_result['return']:.2%}")
+        col2.metric("Annual Volatility", f"{hrp_result['volatility']:.2%}")
+        col3.metric("Sharpe Ratio", f"{hrp_result['sharpe']:.3f}")
+        col4.metric("Method", hrp_method)
+
+        st.plotly_chart(plot_weights_bar_plotly(clique, hrp_result["weights"], title="HRP Weights"), use_container_width=True)
+
+        st.subheader("Weight Distribution")
+        weights_df = pd.DataFrame({
+            "Asset": clique,
+            "HRP Weight": hrp_result["weights"],
+            "Markowitz Weight": opt_result["weights"],
+            "BL Weight": bl_result["weights"],
+        }).sort_values("HRP Weight", ascending=False)
+        st.dataframe(weights_df, use_container_width=True)
+
+        st.subheader("Strategy Comparison")
+        strat_comp = pd.DataFrame({
+            "Strategy": ["Markowitz (Max Sharpe)", "Min Variance", "Black-Litterman", "HRP"],
+            "Return": [f"{opt_result['return']:.2%}", f"{min_var_result['return']:.2%}", f"{bl_result['return']:.2%}", f"{hrp_result['return']:.2%}"],
+            "Volatility": [f"{opt_result['volatility']:.2%}", f"{min_var_result['volatility']:.2%}", f"{bl_result['volatility']:.2%}", f"{hrp_result['volatility']:.2%}"],
+            "Sharpe": [f"{opt_result['sharpe']:.3f}", f"{min_var_result['sharpe']:.3f}", f"{bl_result['sharpe']:.3f}", f"{hrp_result['sharpe']:.3f}"],
+        })
+        st.dataframe(strat_comp, use_container_width=True)
+
     # ─── Excel Export ──────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Export Results")
@@ -316,6 +393,8 @@ if st.sidebar.button("Run Optimization", type="primary"):
         rebalance_result=rebal_result,
         stress_results=stress_results,
         buy_hold_result=bh_result,
+        bl_result=bl_result,
+        hrp_result=hrp_result,
     )
 
     with open(export_path, "rb") as f:

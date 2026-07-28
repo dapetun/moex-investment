@@ -18,6 +18,8 @@ def export_portfolio_to_excel(
     rebalance_result=None,
     stress_results: list | None = None,
     buy_hold_result=None,
+    bl_result: dict | None = None,
+    hrp_result: dict | None = None,
 ) -> Path:
     """Экспорт результатов оптимизации в Excel.
 
@@ -132,5 +134,23 @@ def export_portfolio_to_excel(
             from .stress_test import stress_results_to_dataframe
             stress_df = stress_results_to_dataframe(stress_results)
             stress_df.to_excel(writer, sheet_name="Stress Test", index=False)
+
+        # Sheet 9: Black-Litterman
+        if bl_result is not None:
+            bl_df = pd.DataFrame({
+                "Asset": clique,
+                "BL Weight": bl_result["weights"],
+                "BL Weight (%)": [f"{w:.2%}" for w in bl_result["weights"]],
+            }).sort_values("BL Weight", ascending=False)
+            bl_df.to_excel(writer, sheet_name="Black-Litterman", index=False)
+
+        # Sheet 10: HRP
+        if hrp_result is not None:
+            hrp_df = pd.DataFrame({
+                "Asset": clique,
+                "HRP Weight": hrp_result["weights"],
+                "HRP Weight (%)": [f"{w:.2%}" for w in hrp_result["weights"]],
+            }).sort_values("HRP Weight", ascending=False)
+            hrp_df.to_excel(writer, sheet_name="HRP", index=False)
 
     return filepath
