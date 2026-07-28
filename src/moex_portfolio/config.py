@@ -32,3 +32,9 @@ MAX_DAILY_CHANGE = 0.80  # 80%
 RISK_FREE_RATE = 0.0
 MIN_WEIGHT = 0.0
 MAX_WEIGHT = 0.3
+
+# Advanced analytics
+EWMA_SPAN = 60  # EWMA window for covariance
+MC_SIMULATIONS = 10_000  # Monte Carlo simulations
+ROLLING_WINDOW = 60  # Rolling correlation/beta window
+COV_METHOD = "sample"  # 'sample', 'ledoit_wolf', 'ewma'

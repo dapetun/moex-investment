@@ -8,9 +8,16 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 import pandas as pd
 import streamlit as st
 
+from moex_portfolio.analytics import (
+    cvar_historical,
+    equity_curve,
+    monte_carlo_simulation,
+    var_historical,
+)
 from moex_portfolio.config import (
     CORR_THRESHOLD,
     MAX_WEIGHT,
@@ -25,6 +32,7 @@ from moex_portfolio.filters import prepare_returns
 from moex_portfolio.graph_analysis import build_correlation_graph, find_max_clique
 from moex_portfolio.metrics import portfolio_metrics
 from moex_portfolio.optimizer import efficient_frontier, max_sharpe_portfolio, min_variance_portfolio
+from moex_portfolio.risk_models import covariance_matrix
 from moex_portfolio.visualization import (
     plot_clique_heatmap,
     plot_clique_on_graph,
@@ -73,6 +81,20 @@ risk_free = st.sidebar.number_input(
     step=0.5,
 ) / 100.0
 
+cov_method = st.sidebar.selectbox(
+    "Covariance method",
+    options=["sample", "ledoit_wolf", "ewma"],
+    index=0,
+    help="Sample: обычная ковариация. Ledoit-Wolf: сжатие (стабильнее). EWMA: экспоненциальное сглаживание.",
+)
+
+mc_sims = st.sidebar.number_input(
+    "Monte Carlo simulations",
+    min_value=1000,
+    value=10_000,
+    step=1000,
+)
+
 use_cache = st.sidebar.checkbox("Use cached data", value=True)
 
 # ─── Основной пайплайн ───────────────────────────────────────────────
@@ -108,7 +130,7 @@ if st.sidebar.button("Run Optimization", type="primary"):
     # Шаг 5: Оптимизация
     clique_returns = returns[clique]
     mean_ret = clique_returns.mean()
-    cov = clique_returns.cov()
+    cov = covariance_matrix(clique_returns, method=cov_method)
 
     opt_result = max_sharpe_portfolio(
         mean_ret, cov, risk_free_rate=risk_free, max_weight=max_weight
@@ -120,9 +142,22 @@ if st.sidebar.button("Run Optimization", type="primary"):
         mean_ret, cov, n_points=50, max_weight=max_weight
     )
 
+    # VaR/CVaR
+    var_95 = var_historical(clique_returns, opt_result["weights"], confidence=0.95)
+    cvar_95 = cvar_historical(clique_returns, opt_result["weights"], confidence=0.95)
+
+    # Monte Carlo
+    mc_results = monte_carlo_simulation(
+        mean_ret, cov, opt_result["weights"],
+        n_simulations=int(mc_sims), seed=42,
+    )
+
+    # Equity curve
+    eq = equity_curve(clique_returns, opt_result["weights"])
+
     # ─── Результаты ───────────────────────────────────────────────
-    tab_overview, tab_frontier, tab_graphs, tab_analysis = st.tabs(
-        ["Portfolio", "Efficient Frontier", "Graph Analysis", "Detailed Analysis"]
+    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis = st.tabs(
+        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis"]
     )
 
     with tab_overview:
@@ -139,6 +174,23 @@ if st.sidebar.button("Run Optimization", type="primary"):
         col2.metric("Annual Volatility", f"{opt_result['volatility']:.2%}")
         col3.metric("Sharpe Ratio", f"{opt_result['sharpe']:.3f}")
         col4.metric("Risk-free Rate", f"{risk_free:.2%}")
+
+        col5, col6, col7, col8 = st.columns(4)
+        col5.metric("VaR (95%)", f"{var_95:.2%}", help="Суточные потери с 5% вероятностью")
+        col6.metric("CVaR (95%)", f"{cvar_95:.2%}", help="Средние потери за VaR")
+        col7.metric("Sortino", f"{opt_result.get('sortino', 0):.3f}")
+        col8.metric("Cov Method", cov_method.upper())
+
+        st.subheader("Equity Curve (Max Sharpe Portfolio)")
+        fig_eq, ax_eq = plt.subplots(figsize=(12, 4))
+        ax_eq.plot(eq.index, eq.values, linewidth=1.5, color="#1f77b4")
+        ax_eq.axhline(y=1.0, color="gray", linestyle="--", alpha=0.5)
+        ax_eq.set_title("Portfolio Growth")
+        ax_eq.set_ylabel("Cumulative Return")
+        ax_eq.grid(True, alpha=0.3)
+        plt.tight_layout()
+        st.pyplot(fig_eq)
+        plt.close(fig_eq)
 
         st.subheader("Min Variance Portfolio")
         min_var_df = pd.DataFrame({
@@ -183,6 +235,52 @@ if st.sidebar.button("Run Optimization", type="primary"):
         plt.tight_layout()
         st.pyplot(fig)
         plt.close(fig)
+
+    with tab_mc:
+        st.subheader("Monte Carlo Simulation")
+
+        col_a, col_b, col_c, col_d = st.columns(4)
+        col_a.metric("Mean Annual Return", f"{mc_results['annual_return'].mean():.2%}")
+        col_b.metric("Mean Annual Volatility", f"{mc_results['annual_volatility'].mean():.2%}")
+        col_c.metric("Mean Max Drawdown", f"{mc_results['max_drawdown'].mean():.2%}")
+        col_d.metric("Simulations", f"{mc_sims:,}")
+
+        # Distribution of annual returns
+        fig_mc, axes = plt.subplots(1, 3, figsize=(15, 4))
+
+        axes[0].hist(mc_results["annual_return"] * 100, bins=80, color="#1f77b4", alpha=0.7, edgecolor="white")
+        axes[0].axvline(x=mc_results["annual_return"].mean() * 100, color="red", linestyle="--", label="Mean")
+        axes[0].set_xlabel("Annual Return (%)")
+        axes[0].set_ylabel("Frequency")
+        axes[0].set_title("Return Distribution")
+        axes[0].legend()
+
+        axes[1].hist(mc_results["annual_volatility"] * 100, bins=80, color="#ff7f0e", alpha=0.7, edgecolor="white")
+        axes[1].axvline(x=mc_results["annual_volatility"].mean() * 100, color="red", linestyle="--", label="Mean")
+        axes[1].set_xlabel("Annual Volatility (%)")
+        axes[1].set_title("Volatility Distribution")
+        axes[1].legend()
+
+        axes[2].hist(mc_results["max_drawdown"] * 100, bins=80, color="#2ca02c", alpha=0.7, edgecolor="white")
+        axes[2].axvline(x=mc_results["max_drawdown"].mean() * 100, color="red", linestyle="--", label="Mean")
+        axes[2].set_xlabel("Max Drawdown (%)")
+        axes[2].set_title("Drawdown Distribution")
+        axes[2].legend()
+
+        plt.tight_layout()
+        st.pyplot(fig_mc)
+        plt.close(fig_mc)
+
+        # Percentiles
+        st.subheader("Confidence Intervals")
+        percentiles = [5, 25, 50, 75, 95]
+        pct_df = pd.DataFrame({
+            "Percentile": [f"{p}%" for p in percentiles],
+            "Annual Return": [f"{np.percentile(mc_results['annual_return'], p):.2%}" for p in percentiles],
+            "Annual Volatility": [f"{np.percentile(mc_results['annual_volatility'], p):.2%}" for p in percentiles],
+            "Max Drawdown": [f"{np.percentile(mc_results['max_drawdown'], p):.2%}" for p in percentiles],
+        })
+        st.dataframe(pct_df, use_container_width=True)
 
     with tab_graphs:
         st.subheader("Correlation Graph Analysis")
@@ -240,4 +338,5 @@ else:
     3. **Correlation Graph**: Builds a graph where edges connect weakly correlated stocks
     4. **Clique Detection**: Finds the largest group of mutually uncorrelated stocks
     5. **Optimization**: Applies Markowitz Mean-Variance optimization to find optimal weights
+    6. **Risk Analysis**: Monte Carlo simulation, VaR/CVaR, equity curve
     """)

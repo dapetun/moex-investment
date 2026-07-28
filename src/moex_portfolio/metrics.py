@@ -101,6 +101,59 @@ def max_drawdown(equity_curve: pd.Series) -> float:
     return drawdown.min()
 
 
+def information_ratio(
+    weights: np.ndarray,
+    mean_returns: pd.Series,
+    cov_matrix: pd.DataFrame,
+    benchmark_return: float = 0.0,
+) -> float:
+    """Коэффициент информативности (Information Ratio).
+
+    Args:
+        weights: Веса активов.
+        mean_returns: Средние дневные доходности.
+        cov_matrix: Ковариационная матрица.
+        benchmark_return: Годовая доходность бенчмарка.
+
+    Returns:
+        Information Ratio.
+    """
+    ret = portfolio_return(weights, mean_returns)
+    vol = portfolio_volatility(weights, cov_matrix)
+    tracking_error = vol  # Упрощённо: используем волатильность
+    if tracking_error == 0:
+        return 0.0
+    return (ret - benchmark_return) / tracking_error
+
+
+def calmar_ratio(
+    equity_curve_data: pd.Series,
+    periods_per_year: int = 252,
+) -> float:
+    """Коэффициент Калмара.
+
+    Args:
+        equity_curve_data: Кривая капитала.
+        periods_per_year: Периодов в году.
+
+    Returns:
+        Calmar Ratio.
+    """
+    total_return = equity_curve_data.iloc[-1] / equity_curve_data.iloc[0] - 1
+    n_years = len(equity_curve_data) / periods_per_year
+    if n_years <= 0:
+        return 0.0
+    annual_return = (1 + total_return) ** (1 / n_years) - 1
+
+    running_max = equity_curve_data.cummax()
+    drawdown = (equity_curve_data - running_max) / running_max
+    max_dd = abs(drawdown.min())
+
+    if max_dd == 0:
+        return 0.0
+    return annual_return / max_dd
+
+
 def portfolio_metrics(
     weights: np.ndarray,
     mean_returns: pd.Series,
@@ -114,16 +167,17 @@ def portfolio_metrics(
         weights: Веса активов.
         mean_returns: Средние дневные доходности.
         cov_matrix: Ковариационная матрица.
-        returns: DataFrame с доходностями (для Sortino и max drawdown).
+        returns: DataFrame с доходностями (для Sortino, max drawdown, Calmar).
         risk_free_rate: Безрисковая ставка.
 
     Returns:
-        Словарь с метриками: return, volatility, sharpe, sortino, max_drawdown.
+        Словарь с метриками: return, volatility, sharpe, sortino, max_drawdown, calmar, information_ratio.
     """
     result = {
         "return": portfolio_return(weights, mean_returns),
         "volatility": portfolio_volatility(weights, cov_matrix),
         "sharpe": sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate),
+        "information_ratio": information_ratio(weights, mean_returns, cov_matrix),
     }
 
     if returns is not None:
@@ -132,8 +186,12 @@ def portfolio_metrics(
         )
         port_daily = returns.values @ weights
         result["max_drawdown"] = max_drawdown(pd.Series(port_daily))
+
+        eq = equity_curve_data = (1 + pd.Series(port_daily)).cumprod()
+        result["calmar"] = calmar_ratio(eq)
     else:
         result["sortino"] = None
         result["max_drawdown"] = None
+        result["calmar"] = None
 
     return result
