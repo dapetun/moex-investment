@@ -5,6 +5,7 @@ import time
 from datetime import date
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import requests
 from tqdm import tqdm
@@ -187,3 +188,122 @@ def load_all_data(
     prices.to_csv(cache_path, sep=";")
 
     return prices
+
+
+def get_dividends(ticker: str) -> pd.DataFrame | None:
+    """Загрузка дивидендов тикера через MOEX ISS.
+
+    Args:
+        ticker: Тикер акции.
+
+    Returns:
+        DataFrame с колонками [ticker, registryclosedate, value] или None.
+    """
+    url = f"{MOEX_ISS_BASE}/securities/{ticker}/dividends.json"
+    params = {"iss.meta": "off"}
+
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError):
+        return None
+
+    if "dividends" not in data or not data["dividends"]["data"]:
+        return None
+
+    df = pd.DataFrame(
+        data["dividends"]["data"],
+        columns=data["dividends"]["columns"],
+    )
+
+    if df.empty:
+        return None
+
+    # registryclosedate — дата закрытия реестра
+    # value — размер дивиденда на акцию
+    if "registryclosedate" in df.columns and "value" in df.columns:
+        df["registryclosedate"] = pd.to_datetime(df["registryclosedate"])
+        df = df[["registryclosedate", "value"]].dropna()
+        df = df.sort_values("registryclosedate")
+        return df
+
+    return None
+
+
+def adjust_prices_for_dividends(
+    prices: pd.DataFrame,
+    tickers: list[str] | None = None,
+    start_date: str | date = START_DATE,
+) -> pd.DataFrame:
+    """Корректировка цен на дивиденды (ex-dividend adjustment).
+
+    Для каждого тикера:
+    - Загружает дивидендный календарь
+    - Находит ex-dividend даты (registryclosedate)
+    - Для каждой ex-div даты умножает ВСЕ цены ДО этой даты
+      на множитель (close + dividend) / close
+
+    Args:
+        prices: DataFrame с ценами закрытия (столбцы = тикеры).
+        tickers: Список тикеров для корректировки. Если None — все.
+        start_date: Начальная дата (для фильтрации дивидендов).
+
+    Returns:
+        DataFrame с скорректированными ценами.
+    """
+    if tickers is None:
+        tickers = [c for c in prices.columns if not c.endswith("_VALUE")]
+
+    adjusted = prices.copy()
+    adjusted_prices_count = 0
+
+    for ticker in tqdm(tickers, desc="Dividend adjustment"):
+        if ticker not in adjusted.columns:
+            continue
+
+        divs = get_dividends(ticker)
+        if divs is None or divs.empty:
+            continue
+
+        # Фильтруем по дате
+        if isinstance(start_date, str):
+            start_date = date.fromisoformat(start_date)
+        divs = divs[divs["registryclosedate"] >= pd.Timestamp(start_date)]
+
+        if divs.empty:
+            continue
+
+        # Строим накопленный множитель (от конца к началу)
+        prices_col = adjusted[ticker].dropna()
+        if prices_col.empty:
+            continue
+
+        adjustment_factor = 1.0
+        for _, row in divs.iterrows():
+            ex_date = row["registryclosedate"]
+            dividend = row["value"]
+
+            if dividend <= 0:
+                continue
+
+            # Находим ближайшую дату торгов до ex-date
+            mask = prices_col.index < ex_date
+            if not mask.any():
+                continue
+
+            close_before = prices_col[mask].iloc[-1]
+            if close_before > 0:
+                adjustment_factor *= (close_before + dividend) / close_before
+
+        if adjustment_factor != 1.0:
+            mask = adjusted.index < divs["registryclosedate"].max()
+            adjusted.loc[mask, ticker] = adjusted.loc[mask, ticker] * adjustment_factor
+            adjusted_prices_count += 1
+            logger.info(
+                "%s: adjusted prices before %s, factor=%.4f",
+                ticker, divs["registryclosedate"].max().date(), adjustment_factor,
+            )
+
+    logger.info("Adjusted %d tickers for dividends", adjusted_prices_count)
+    return adjusted

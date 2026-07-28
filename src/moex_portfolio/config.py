@@ -46,3 +46,6 @@ MIN_DRIFT = 0.05  # 5% — min weight drift to trigger rebalance
 
 # Stress testing
 STRESS_TEST_SCENARIOS = "all"  # 'all' or list of scenario names
+
+# Dividend adjustment
+ADJUST_FOR_DIVIDENDS = True  # Correct prices for ex-dividend drops
