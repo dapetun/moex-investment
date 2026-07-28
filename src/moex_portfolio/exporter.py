@@ -15,6 +15,9 @@ def export_portfolio_to_excel(
     returns: pd.DataFrame | None = None,
     metrics: dict | None = None,
     params: dict | None = None,
+    rebalance_result=None,
+    stress_results: list | None = None,
+    buy_hold_result=None,
 ) -> Path:
     """Экспорт результатов оптимизации в Excel.
 
@@ -106,5 +109,28 @@ def export_portfolio_to_excel(
         # Sheet 6: Historical Returns
         if returns is not None:
             returns[clique].to_excel(writer, sheet_name="Returns")
+
+        # Sheet 7: Rebalancing Results
+        if rebalance_result is not None:
+            rebal_df = pd.DataFrame({
+                "Date": rebalance_result.dates,
+                "Portfolio Value": rebalance_result.portfolio_values,
+            })
+
+            if buy_hold_result is not None:
+                bh_df = pd.DataFrame({
+                    "Date": buy_hold_result.dates,
+                    "Buy & Hold Value": buy_hold_result.portfolio_values,
+                })
+                merged = rebal_df.merge(bh_df, on="Date", how="outer")
+                merged.to_excel(writer, sheet_name="Rebalancing", index=False)
+            else:
+                rebal_df.to_excel(writer, sheet_name="Rebalancing", index=False)
+
+        # Sheet 8: Stress Test Results
+        if stress_results:
+            from .stress_test import stress_results_to_dataframe
+            stress_df = stress_results_to_dataframe(stress_results)
+            stress_df.to_excel(writer, sheet_name="Stress Test", index=False)
 
     return filepath

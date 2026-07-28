@@ -38,3 +38,11 @@ EWMA_SPAN = 60  # EWMA window for covariance
 MC_SIMULATIONS = 10_000  # Monte Carlo simulations
 ROLLING_WINDOW = 60  # Rolling correlation/beta window
 COV_METHOD = "sample"  # 'sample', 'ledoit_wolf', 'ewma'
+
+# Rebalancing
+REBALANCE_FREQ_DAYS = 21  # ~1 trading month
+TRANSACTION_COST_BPS = 10.0  # 0.1% (10 basis points)
+MIN_DRIFT = 0.05  # 5% — min weight drift to trigger rebalance
+
+# Stress testing
+STRESS_TEST_SCENARIOS = "all"  # 'all' or list of scenario names

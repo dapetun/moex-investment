@@ -134,6 +134,77 @@ def min_variance_portfolio(
     }
 
 
+def max_sharpe_with_sectors(
+    mean_returns: pd.Series,
+    cov_matrix: pd.DataFrame,
+    sector_map: dict[str, str],
+    max_sector_weight: float = 0.40,
+    risk_free_rate: float = RISK_FREE_RATE,
+    min_weight: float = MIN_WEIGHT,
+    max_weight: float = MAX_WEIGHT,
+) -> dict:
+    """Оптимизация портфеля с секторальными ограничениями.
+
+    Args:
+        mean_returns: Средние дневные доходности.
+        cov_matrix: Ковариационная матрица.
+        sector_map: Маппинг тикер -> сектор (например {"SBER": "Finance", ...}).
+        max_sector_weight: Максимальная доля одного сектора (0.4 = 40%).
+        risk_free_rate: Безрисковая ставка.
+        min_weight: Минимальный вес актива.
+        max_weight: Максимальный вес актива.
+
+    Returns:
+        Словарь с: weights, return, volatility, sharpe, sector_weights.
+    """
+    tickers = list(mean_returns.index)
+    n = len(tickers)
+    init_weights = np.array([1.0 / n] * n)
+
+    bounds = _make_bounds(n, min_weight, max_weight)
+    constraints = _make_constraints(n)
+
+    # Секторальные ограничения
+    sectors = sorted(set(sector_map.get(t, "Unknown") for t in tickers))
+    for sector in sectors:
+        sector_indices = [i for i, t in enumerate(tickers) if sector_map.get(t, "Unknown") == sector]
+        if len(sector_indices) > 0:
+            constraints.append({
+                "type": "ineq",
+                "fun": lambda w, idx=sector_indices: max_sector_weight - sum(w[i] for i in idx),
+            })
+
+    def neg_sharpe(w):
+        return -sharpe_ratio(w, mean_returns, cov_matrix, risk_free_rate)
+
+    result = minimize(
+        neg_sharpe,
+        init_weights,
+        method="SLSQP",
+        bounds=bounds,
+        constraints=constraints,
+    )
+
+    if not result.success:
+        logger.warning("Optimization failed: %s", result.message)
+
+    weights = result.x
+
+    # Вычисляем доли секторов
+    sector_weights = {}
+    for sector in sectors:
+        sector_idx = [i for i, t in enumerate(tickers) if sector_map.get(t, "Unknown") == sector]
+        sector_weights[sector] = sum(weights[i] for i in sector_idx)
+
+    return {
+        "weights": weights,
+        "return": portfolio_return(weights, mean_returns),
+        "volatility": portfolio_volatility(weights, cov_matrix),
+        "sharpe": sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate),
+        "sector_weights": sector_weights,
+    }
+
+
 def efficient_frontier(
     mean_returns: pd.Series,
     cov_matrix: pd.DataFrame,
