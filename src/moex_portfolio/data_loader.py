@@ -307,3 +307,204 @@ def adjust_prices_for_dividends(
 
     logger.info("Adjusted %d tickers for dividends", adjusted_prices_count)
     return adjusted
+
+
+async def _fetch_ticker_async(
+    session,
+    ticker: str,
+    start: str | date,
+    end: str | date,
+) -> pd.DataFrame | None:
+    """Асинхронная загрузка одного тикера."""
+    import asyncio
+
+    url = f"{MOEX_ISS_BASE}/history/engines/stock/markets/shares/securities/{ticker}.json"
+    all_data: list[list] = []
+    start_row = 0
+
+    while True:
+        params = {
+            "from": str(start),
+            "till": str(end),
+            "iss.meta": "off",
+            "history.columns": "TRADEDATE,CLOSE,VALUE",
+            "start": start_row,
+        }
+
+        retries = 0
+        data = None
+        while retries < MAX_RETRIES:
+            try:
+                async with session.get(url, params=params, timeout=15) as response:
+                    data = await response.json()
+                    break
+            except Exception:
+                retries += 1
+                wait = RETRY_BACKOFF ** retries
+                await asyncio.sleep(wait)
+        else:
+            return None
+
+        if "history" not in data:
+            break
+
+        rows = data["history"]["data"]
+        if not rows:
+            break
+
+        all_data.extend(rows)
+
+        if len(rows) < 100:
+            break
+
+        start_row += 100
+        await asyncio.sleep(REQUEST_DELAY)
+
+    if not all_data:
+        return None
+
+    df = pd.DataFrame(all_data, columns=["TRADEDATE", "CLOSE", "VALUE"])
+    df["TRADEDATE"] = pd.to_datetime(df["TRADEDATE"])
+    df = df.drop_duplicates(subset="TRADEDATE")
+    df.set_index("TRADEDATE", inplace=True)
+    df = df[~df.index.duplicated(keep="first")]
+    df = df.rename(columns={"CLOSE": ticker, "VALUE": f"{ticker}_VALUE"})
+    return df
+
+
+async def _load_all_async(
+    tickers: list[str],
+    start_date: str | date,
+    end_date: str | date,
+    max_concurrent: int = 10,
+) -> list[pd.DataFrame]:
+    """Асинхронная загрузка списка тикеров с ограничением параллелизма."""
+    import asyncio
+
+    import aiohttp
+
+    semaphore = asyncio.Semaphore(max_concurrent)
+    results = []
+
+    async with aiohttp.ClientSession() as session:
+        async def _limited_fetch(ticker):
+            async with semaphore:
+                return await _fetch_ticker_async(session, ticker, start_date, end_date)
+
+        tasks = [_limited_fetch(t) for t in tickers]
+        for coro in asyncio.as_completed(tasks):
+            result = await coro
+            if result is not None:
+                results.append(result)
+
+    return results
+
+
+def load_all_data_async(
+    tickers: list[str] | None = None,
+    start_date: str | date = START_DATE,
+    end_date: str | date = END_DATE,
+    use_cache: bool = True,
+    max_concurrent: int = 10,
+) -> pd.DataFrame:
+    """Асинхронная загрузка данных для списка тикеров.
+
+    В ~10-50 раз быстрее синхронной версии за счёт параллельных запросов.
+
+    Args:
+        tickers: Список тикеров. Если None — загружает все акции MOEX.
+        start_date: Начальная дата.
+        end_date: Конечная дата.
+        use_cache: Использовать ли CSV-кэш.
+        max_concurrent: Максимальное число параллельных запросов.
+
+    Returns:
+        DataFrame с ценами и оборотами.
+    """
+    import asyncio
+
+    cache_path = DATA_DIR / "price_data.csv"
+
+    if use_cache and cache_path.exists():
+        logger.info("Loading from cache: %s", cache_path)
+        return pd.read_csv(cache_path, sep=";", index_col="TRADEDATE")
+
+    if tickers is None:
+        tickers = get_all_shares()
+        logger.info("Found %d tickers on MOEX", len(tickers))
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    all_prices = asyncio.run(
+        _load_all_async(tickers, start_date, end_date, max_concurrent)
+    )
+
+    if not all_prices:
+        logger.error("No data loaded")
+        return pd.DataFrame()
+
+    prices = pd.concat(all_prices, axis=1)
+    prices = prices.dropna(axis=1, thresh=int(len(prices) * 0.8))
+    prices = prices.ffill().bfill()
+    prices = prices.dropna(axis=1, how="all")
+
+    logger.info("Loaded %d stocks, %d periods", prices.shape[1], prices.shape[0])
+    prices.to_csv(cache_path, sep=";")
+
+    return prices
+
+
+def incremental_update(
+    tickers: list[str] | None = None,
+    end_date: str | date = END_DATE,
+    use_cache: bool = True,
+) -> pd.DataFrame:
+    """Инкрементальное обновление кэша: загружает только новые данные.
+
+    Если кэш существует, определяет последнюю дату и загружает данные
+    только с этой даты, дописывая к существующему файлу.
+
+    Args:
+        tickers: Список тикеров. Если None — загружает все.
+        end_date: Конечная дата.
+        use_cache: Использовать ли существующий кэш.
+
+    Returns:
+        Обновлённый DataFrame.
+    """
+    cache_path = DATA_DIR / "price_data.csv"
+
+    if use_cache and cache_path.exists():
+        existing = pd.read_csv(cache_path, sep=";", index_col="TRADEDATE")
+        existing.index = pd.to_datetime(existing.index)
+        last_date = existing.index.max()
+        logger.info("Incremental update from %s", last_date.date())
+
+        # Определяем тикеры для обновления
+        if tickers is None:
+            tickers = get_all_shares()
+
+        # Загружаем данные с последней даты
+        import asyncio
+        new_data = asyncio.run(
+            _load_all_async(tickers, last_date + pd.Timedelta(days=1), end_date)
+        )
+
+        if new_data:
+            new_prices = pd.concat(new_data, axis=1)
+            # Объединяем: перезаписываем существующие столбцы, дописываем новые
+            combined = existing.combine_first(new_prices)
+            combined = combined.ffill().bfill()
+            combined.to_csv(cache_path, sep=";")
+            logger.info(
+                "Incremental update: %d stocks, %d periods (was %d)",
+                combined.shape[1], combined.shape[0], existing.shape[0],
+            )
+            return combined
+
+        logger.info("No new data to update")
+        return existing
+
+    return load_all_data_async(
+        tickers=tickers, end_date=end_date, use_cache=False,
+    )

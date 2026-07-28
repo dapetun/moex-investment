@@ -1,10 +1,16 @@
 """Тесты модуля data_loader (локальные, без API)."""
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from moex_portfolio.data_loader import adjust_prices_for_dividends
+from moex_portfolio.data_loader import (
+    _fetch_ticker_async,
+    adjust_prices_for_dividends,
+)
 
 
 def test_adjust_prices_no_dividends():
@@ -73,3 +79,68 @@ def test_adjust_prices_zero_dividend():
         pd.testing.assert_frame_equal(result, prices)
     finally:
         dl.get_dividends = original
+
+
+def test_fetch_ticker_async_parses_data():
+    """Парсинг JSON ответа MOEX API."""
+    mock_data = {
+        "history": {
+            "columns": ["TRADEDATE", "CLOSE", "VALUE"],
+            "data": [
+                ["2024-01-01", 100.0, 50000],
+                ["2024-01-02", 105.0, 60000],
+            ],
+        }
+    }
+
+    mock_response = AsyncMock()
+    mock_response.json = AsyncMock(return_value=mock_data)
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+
+    mock_session = AsyncMock()
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    result = asyncio.run(
+        _fetch_ticker_async(mock_session, "TEST", "2024-01-01", "2024-01-02")
+    )
+
+    assert result is not None
+    assert "TEST" in result.columns
+    assert "TEST_VALUE" in result.columns
+    assert len(result) == 2
+
+
+def test_fetch_ticker_async_empty_returns_none():
+    """Пустой ответ API → None."""
+    mock_data = {"history": {"columns": ["TRADEDATE", "CLOSE", "VALUE"], "data": []}}
+
+    mock_response = AsyncMock()
+    mock_response.json = AsyncMock(return_value=mock_data)
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+
+    mock_session = AsyncMock()
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    result = asyncio.run(
+        _fetch_ticker_async(mock_session, "TEST", "2024-01-01", "2024-01-02")
+    )
+    assert result is None
+
+
+def test_incremental_update_no_cache(tmp_path):
+    """Инкрементальное обновление без кэша → полная загрузка."""
+    from moex_portfolio import data_loader as dl
+
+    original_load = dl.load_all_data_async
+    fake_data = pd.DataFrame(
+        {"A": [100.0, 110.0], "A_VALUE": [50000, 60000]},
+        index=pd.date_range("2024-01-01", periods=2),
+    )
+    dl.load_all_data_async = lambda **kwargs: fake_data
+    try:
+        result = dl.incremental_update(tickers=["A"], use_cache=False)
+        assert len(result) == 2
+    finally:
+        dl.load_all_data_async = original_load
