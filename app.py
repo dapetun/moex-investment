@@ -1,10 +1,7 @@
 """Streamlit Dashboard — MOEX Portfolio Optimizer (RU/EN, Windows 11 design)."""
 
-import sys
 import tempfile
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import matplotlib.pyplot as plt
 import numpy as np
