@@ -154,12 +154,81 @@ def calmar_ratio(
     return annual_return / max_dd
 
 
+def treynor_ratio(
+    weights: np.ndarray,
+    returns: pd.DataFrame,
+    market_returns: pd.Series,
+    risk_free_rate: float = RISK_FREE_RATE,
+) -> float:
+    """Коэффициент Трейнора.
+
+    Трейнор = (Rp - Rf) / beta_p
+    Показывает доходность на единицу систематического риска.
+
+    Args:
+        weights: Веса активов.
+        returns: DataFrame с доходностями активов.
+        market_returns: Series с доходностями рынка (бенчмарка).
+        risk_free_rate: Безрисковая ставка (годовая).
+
+    Returns:
+        Коэффициент Трейнора.
+    """
+    common_idx = returns.index.intersection(market_returns.index)
+    r = returns.loc[common_idx]
+    m = market_returns.loc[common_idx]
+
+    port_daily = r.values @ weights
+    port_series = pd.Series(port_daily, index=common_idx)
+
+    cov_pm = port_series.cov(m)
+    var_m = m.var()
+
+    if var_m == 0:
+        return 0.0
+    beta_p = cov_pm / var_m
+
+    port_annual = port_daily.mean() * 252
+    if beta_p == 0:
+        return 0.0
+    return (port_annual - risk_free_rate) / beta_p
+
+
+def modigliani_ratio(
+    weights: np.ndarray,
+    mean_returns: pd.Series,
+    cov_matrix: pd.DataFrame,
+    market_returns: pd.Series,
+    risk_free_rate: float = RISK_FREE_RATE,
+) -> float:
+    """Коэффициент Модильяни (M² / Modigliani-Modigliani Measure).
+
+    M² = Rf + Sharpe_p * sigma_m
+    Скорректированная доходность портфеля, приведённая к волатильности рынка.
+
+    Args:
+        weights: Веса активов.
+        mean_returns: Средние дневные доходности.
+        cov_matrix: Ковариационная матрица.
+        market_returns: Series с доходностями рынка.
+        risk_free_rate: Безрисковая ставка (годовая).
+
+    Returns:
+        M² (годовая доходность, скорректированная на риск).
+    """
+    market_vol = market_returns.std() * np.sqrt(252)
+    sr = sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate)
+
+    return sr * market_vol + risk_free_rate
+
+
 def portfolio_metrics(
     weights: np.ndarray,
     mean_returns: pd.Series,
     cov_matrix: pd.DataFrame,
     returns: pd.DataFrame | None = None,
     risk_free_rate: float = RISK_FREE_RATE,
+    market_returns: pd.Series | None = None,
 ) -> dict:
     """Все метрики портфеля одним вызовом.
 
@@ -169,9 +238,10 @@ def portfolio_metrics(
         cov_matrix: Ковариационная матрица.
         returns: DataFrame с доходностями (для Sortino, max drawdown, Calmar).
         risk_free_rate: Безрисковая ставка.
+        market_returns: Доходности рынка (для Treynor, M²).
 
     Returns:
-        Словарь с метриками: return, volatility, sharpe, sortino, max_drawdown, calmar, information_ratio.
+        Словарь с метриками.
     """
     result = {
         "return": portfolio_return(weights, mean_returns),
@@ -193,5 +263,12 @@ def portfolio_metrics(
         result["sortino"] = None
         result["max_drawdown"] = None
         result["calmar"] = None
+
+    if market_returns is not None:
+        result["treynor"] = treynor_ratio(weights, returns if returns is not None else pd.DataFrame(), market_returns, risk_free_rate)
+        result["modigliani_m2"] = modigliani_ratio(weights, mean_returns, cov_matrix, market_returns, risk_free_rate)
+    else:
+        result["treynor"] = None
+        result["modigliani_m2"] = None
 
     return result
