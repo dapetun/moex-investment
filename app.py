@@ -21,6 +21,7 @@ from moex_portfolio.black_litterman import (
     create_views_from_correlation,
     optimize_black_litterman,
 )
+from moex_portfolio.bonds_loader import get_ofz_list
 from moex_portfolio.charts import (
     plot_efficient_frontier_plotly,
     plot_equity_curve_plotly,
@@ -41,10 +42,18 @@ from moex_portfolio.correlation import (
     compute_correlation_matrix,
 )
 from moex_portfolio.data_loader import get_all_shares, load_all_data
+from moex_portfolio.dividend_strategies import (
+    compare_dividend_strategies,
+    compute_dividend_yield,
+    dogs_of_the_dow,
+    high_dividend_yield,
+)
 from moex_portfolio.exporter import export_portfolio_to_excel, export_portfolio_to_pdf
 from moex_portfolio.filters import prepare_returns
+from moex_portfolio.fundamental import compute_multiplicators, rank_stocks
 from moex_portfolio.graph_analysis import build_correlation_graph, find_max_clique
 from moex_portfolio.hrp import optimize_hrp
+from moex_portfolio.merton import full_merton_analysis
 from moex_portfolio.metrics import portfolio_metrics
 from moex_portfolio.optimizer import (
     efficient_frontier,
@@ -66,6 +75,11 @@ from moex_portfolio.visualization import (
     plot_clique_separate,
     plot_full_graph,
     plot_total_returns,
+)
+from moex_portfolio.yield_curve import (
+    build_yield_curve,
+    interpolate_yield_curve,
+    term_structure_analysis,
 )
 
 st.set_page_config(page_title="MOEX Portfolio Optimizer", layout="wide")
@@ -179,8 +193,8 @@ if st.sidebar.button("Run Optimization", type="primary"):
     hrp_result = optimize_hrp(clique_returns, max_weight=max_weight)
 
     # ─── Tabs ─────────────────────────────────────────────────────
-    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress, tab_bl, tab_hrp, tab_rolling = st.tabs(
-        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test", "Black-Litterman", "HRP", "Rolling Correlation"]
+    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress, tab_bl, tab_hrp, tab_rolling, tab_dividends, tab_fundamental, tab_bonds, tab_merton = st.tabs(
+        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test", "Black-Litterman", "HRP", "Rolling Correlation", "Dividends", "Fundamental", "Bonds", "Merton Model"]
     )
 
     with tab_overview:
@@ -389,6 +403,125 @@ if st.sidebar.button("Run Optimization", type="primary"):
         from moex_portfolio.analytics import rolling_beta as rb
         roll_beta_df = rb(returns[clique], market_returns, window=roll_window)
         st.line_chart(roll_beta_df, height=400)
+
+    with tab_dividends:
+        st.subheader("Dividend Strategies")
+        st.markdown("Dogs of the Dow, High Dividend Yield, and Equal Weight benchmark.")
+
+        dummy_divs = pd.Series(dict.fromkeys(clique, 10.0))
+        dummy_prices = pd.Series(dict.fromkeys(clique, 1000.0))
+        dy = compute_dividend_yield(dummy_divs, dummy_prices)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            n_dogs = st.slider("Dogs of the Dow: N stocks", 3, 20, 10, key="n_dogs")
+        with col2:
+            hd_percentile = st.slider("High Div: percentile", 50, 95, 75, key="hd_pct")
+
+        dogs_result = dogs_of_the_dow(returns, dy, n_stocks=n_dogs)
+        hd_result = high_dividend_yield(returns, dy, percentile=hd_percentile)
+        comp_div = compare_dividend_strategies(returns, dy)
+
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Dogs: Stocks", str(len(dogs_result["selected_tickers"])))
+        col_b.metric("Dogs: Sharpe", f"{dogs_result['sharpe']:.3f}")
+        col_c.metric("Dogs: Annual Return", f"{dogs_result['annual_return']:.2%}")
+
+        st.dataframe(comp_div, use_container_width=True)
+
+        if dogs_result["selected_tickers"]:
+            st.subheader("Selected Stocks (Dogs)")
+            st.write(", ".join(dogs_result["selected_tickers"]))
+
+    with tab_fundamental:
+        st.subheader("Fundamental Analysis")
+        st.markdown("Stock ranking by Sharpe, return, volatility (composite score).")
+
+        mult = compute_multiplicators(returns)
+        ranked = rank_stocks(mult)
+
+        display_cols = ["annual_return", "annual_volatility", "sharpe", "skewness", "kurtosis"]
+        display_cols = [c for c in display_cols if c in ranked.columns]
+        st.dataframe(
+            ranked[display_cols].style.format({
+                "annual_return": "{:.2%}",
+                "annual_volatility": "{:.2%}",
+                "sharpe": "{:.3f}",
+                "skewness": "{:.3f}",
+                "kurtosis": "{:.3f}",
+            }),
+            use_container_width=True,
+        )
+
+        st.subheader("Composite Ranking")
+        top_n_fund = st.slider("Top N stocks by score", 5, len(ranked), min(10, len(ranked)), key="top_n_fund")
+        top_stocks = ranked.head(top_n_fund)
+        st.bar_chart(top_stocks["composite_score"])
+
+    with tab_bonds:
+        st.subheader("Bond Analysis (OFZ)")
+        st.markdown("Yield curve, duration, convexity — based on MOEX ISS bond data.")
+
+        try:
+            ofz_df = get_ofz_list()
+            if ofz_df is not None and len(ofz_df) > 0:
+                st.info(f"Loaded {len(ofz_df)} OFZ bonds from MOEX")
+
+                ofz_display = ofz_df[["SECID", "NAME", "YIELDTOOFFER", "MATDATE"]].copy() if "NAME" in ofz_df.columns else ofz_df[["SECID", "YIELDTOOFFER", "MATDATE"]].copy()
+                st.dataframe(ofz_display, use_container_width=True)
+
+                curve = build_yield_curve(ofz_df)
+                if len(curve) > 0:
+                    st.subheader("Yield Curve (OFZ)")
+                    st.line_chart(curve.set_index("maturity_years")["yield_pct"])
+
+                    interp = interpolate_yield_curve(curve)
+                    if len(interp) > 0:
+                        st.subheader("Interpolated Yield Curve")
+                        st.line_chart(interp.set_index("maturity_years")["yield_pct"])
+
+                    ts = term_structure_analysis(curve)
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Shape", ts.get("shape", "N/A"))
+                    col2.metric("Short Yield", f"{ts.get('short_yield', 0):.2f}%")
+                    col3.metric("Long Yield", f"{ts.get('long_yield', 0):.2f}%")
+                    col4.metric("Term Spread", f"{ts.get('term_spread_pct', 0):.2f}%")
+                else:
+                    st.warning("Could not build yield curve from OFZ data.")
+            else:
+                st.warning("No OFZ data available from MOEX ISS.")
+        except Exception as e:
+            st.error(f"Error loading bond data: {e}")
+
+    with tab_merton:
+        st.subheader("Merton Structural Credit Risk Model")
+        st.markdown("Estimate probability of default using Black-Scholes framework.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            equity_val = st.number_input("Equity Value (M RUB)", min_value=10.0, value=300.0, step=10.0, key="merton_eq")
+            debt_val = st.number_input("Debt Face Value (M RUB)", min_value=10.0, value=700.0, step=10.0, key="merton_debt")
+        with col2:
+            vol_eq = st.number_input("Equity Volatility (%)", min_value=1.0, value=40.0, step=5.0, key="merton_vol") / 100.0
+            rf_rate = st.number_input("Risk-Free Rate (%)", min_value=0.0, value=12.0, step=0.5, key="merton_rf") / 100.0
+            ttm = st.number_input("Time to Maturity (years)", min_value=0.25, value=2.0, step=0.25, key="merton_ttm")
+
+        if st.button("Run Merton Analysis", key="run_merton"):
+            result = full_merton_analysis(equity_val, debt_val, vol_eq, rf_rate, ttm)
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Distance to Default", f"{result['distance_to_default']:.2f}")
+            col2.metric("Probability of Default", f"{result['probability_of_default']:.2%}")
+            col3.metric("Credit Spread", f"{result['credit_spread_bps']:.0f} bps")
+            col4.metric("Recovery Rate", f"{result['recovery_rate']:.1%}")
+
+            col5, col6, col7, col8 = st.columns(4)
+            col5.metric("Implied Assets", f"{result['implied_assets_value']:.1f} M")
+            col6.metric("Assets Volatility", f"{result['implied_assets_volatility']:.2%}")
+            col7.metric("Leverage", f"{result['leverage']:.2f}")
+            col8.metric("Model Equity", f"{result['equity_value_model']:.1f} M")
+
+            st.json(result)
 
     # ─── Export ──────────────────────────────────────────────
     st.markdown("---")
