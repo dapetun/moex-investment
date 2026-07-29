@@ -189,7 +189,7 @@ def plot_equity_curve_plotly(eq: pd.Series) -> go.Figure:
         name=f"Max Drawdown ({max_dd_val:.2%})",
         hovertemplate=(
             f"<b>Max Drawdown</b><br>"
-            f"Date: {eq.index[max_dd_idx].strftime('%Y-%m-%d')}<br>"
+            f"Date: {str(eq.index[max_dd_idx])[:10]}<br>"
             f"Value: {cumulative[max_dd_idx]:.4f}<br>"
             f"Drawdown: {max_dd_val:.2%}"
             "<extra></extra>"
