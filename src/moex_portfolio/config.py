@@ -4,7 +4,7 @@
 UI-параметры и дефолты для дашборда живут в defaults.py (Defaults frozen dataclass).
 """
 
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 from dateutil.relativedelta import relativedelta

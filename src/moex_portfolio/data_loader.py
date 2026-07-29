@@ -372,6 +372,8 @@ async def _fetch_ticker_async(
     """Асинхронная загрузка одного тикера."""
     import asyncio
 
+    import aiohttp
+
     url = f"{MOEX_ISS_BASE}/history/engines/stock/markets/shares/securities/{ticker}.json"
     all_data: list[list] = []
     start_row = 0
