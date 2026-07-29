@@ -169,7 +169,7 @@ def plot_equity_curve_plotly(eq: pd.Series) -> go.Figure:
         mode="lines",
         line=dict(width=2, color="#1f77b4"),
         name="Portfolio",
-        hovertemplate="Date: %{x|%Y-%m-%d}<br>Value: %{y:.4f}<extra></extra>",
+        hovertemplate="Date: %{x}<br>Value: %{y:.4f}<extra></extra>",
     ))
 
     fig.add_hline(y=1.0, line_dash="dash", line_color="gray", opacity=0.5)
