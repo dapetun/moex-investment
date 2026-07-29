@@ -1,4 +1,8 @@
-"""Параметры и конфигурация проекта."""
+"""Параметры и конфигурация проекта.
+
+Содержит только константы, используемые напрямую модулями.
+UI-параметры и дефолты для дашборда живут в defaults.py (Defaults frozen dataclass).
+"""
 
 from datetime import date
 from pathlib import Path
@@ -33,24 +37,5 @@ RISK_FREE_RATE = 0.0
 MIN_WEIGHT = 0.0
 MAX_WEIGHT = 0.3
 
-# Advanced analytics
-EWMA_SPAN = 60  # EWMA window for covariance
-MC_SIMULATIONS = 10_000  # Monte Carlo simulations
-ROLLING_WINDOW = 60  # Rolling correlation/beta window
-COV_METHOD = "sample"  # 'sample', 'ledoit_wolf', 'ewma'
-
 # Rebalancing
-REBALANCE_FREQ_DAYS = 21  # ~1 trading month
-TRANSACTION_COST_BPS = 10.0  # 0.1% (10 basis points)
 MIN_DRIFT = 0.05  # 5% — min weight drift to trigger rebalance
-
-# Stress testing
-STRESS_TEST_SCENARIOS = "all"  # 'all' or list of scenario names
-
-# Dividend adjustment
-ADJUST_FOR_DIVIDENDS = True  # Correct prices for ex-dividend drops
-
-# AutoML (FLAML)
-AUTOML_TIME_BUDGET = 60  # seconds for model search
-AUTOML_MAX_ITER = None  # max iterations (None = unlimited)
-AUTOML_WF_TIME_BUDGET = 30  # seconds per walk-forward step

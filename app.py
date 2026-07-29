@@ -40,22 +40,13 @@ from moex_portfolio.charts import (
     plot_monte_carlo_plotly,
     plot_weights_bar_plotly,
 )
-from moex_portfolio.config import (
-    CORR_THRESHOLD,
-    MAX_WEIGHT,
-    MIN_DRIFT,
-    MIN_TURNOVER,
-    REBALANCE_FREQ_DAYS,
-    RISK_FREE_RATE,
-    TRANSACTION_COST_BPS,
-)
+from moex_portfolio.config import MIN_DRIFT
 from moex_portfolio.correlation import compute_correlation_matrix
 from moex_portfolio.data_loader import (
     auto_update_cache,
     check_cache_freshness,
     get_all_shares,
     get_dividend_yields,
-    load_all_data,
 )
 from moex_portfolio.defaults import DEFAULTS, get_defaults_dict
 from moex_portfolio.dividend_strategies import (
@@ -71,16 +62,15 @@ from moex_portfolio.glossary import get_glossary_entry
 from moex_portfolio.graph_analysis import build_correlation_graph, find_max_clique
 from moex_portfolio.hrp import optimize_hrp
 from moex_portfolio.i18n import t
+from moex_portfolio.merton import full_merton_analysis
+from moex_portfolio.metrics import portfolio_metrics
 from moex_portfolio.ml_models import (
     build_features,
     compare_ml_models,
     incremental_train,
     incremental_vs_full_retrain,
-    train_ml_model,
     walk_forward_predict,
 )
-from moex_portfolio.merton import full_merton_analysis
-from moex_portfolio.metrics import portfolio_metrics
 from moex_portfolio.multi_asset import (
     combine_asset_returns,
     efficient_frontier_multi_asset,
