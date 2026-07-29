@@ -41,16 +41,22 @@ from moex_portfolio.config import (
 from moex_portfolio.correlation import (
     compute_correlation_matrix,
 )
-from moex_portfolio.data_loader import get_all_shares, load_all_data
+from moex_portfolio.data_loader import (
+    get_all_shares,
+    get_dividend_yields,
+    load_all_data,
+)
 from moex_portfolio.dividend_strategies import (
     compare_dividend_strategies,
-    compute_dividend_yield,
     dogs_of_the_dow,
     high_dividend_yield,
 )
 from moex_portfolio.exporter import export_portfolio_to_excel, export_portfolio_to_pdf
 from moex_portfolio.filters import prepare_returns
-from moex_portfolio.fundamental import compute_multiplicators, rank_stocks
+from moex_portfolio.fundamental import (
+    compute_multiplicators,
+    get_fundamental_data,
+)
 from moex_portfolio.graph_analysis import build_correlation_graph, find_max_clique
 from moex_portfolio.hrp import optimize_hrp
 from moex_portfolio.merton import full_merton_analysis
@@ -406,11 +412,30 @@ if st.sidebar.button("Run Optimization", type="primary"):
 
     with tab_dividends:
         st.subheader("Dividend Strategies")
-        st.markdown("Dogs of the Dow, High Dividend Yield, and Equal Weight benchmark.")
+        st.markdown("Dogs of the Dow, High Dividend Yield, and Equal Weight benchmark — using real MOEX dividend data.")
 
-        dummy_divs = pd.Series(dict.fromkeys(clique, 10.0))
-        dummy_prices = pd.Series(dict.fromkeys(clique, 1000.0))
-        dy = compute_dividend_yield(dummy_divs, dummy_prices)
+        with st.spinner("Loading dividend data from MOEX ISS..."):
+            price_cols = [c for c in raw_data.columns if not c.endswith("_VALUE")]
+            all_prices = raw_data[price_cols]
+            dy = get_dividend_yields(clique, all_prices)
+
+        nonzero_dy = dy[dy > 0]
+        if len(nonzero_dy) > 0:
+            st.info(f"Real dividend data loaded: {len(nonzero_dy)} of {len(clique)} stocks pay dividends")
+            dy_display = pd.DataFrame({
+                "Ticker": nonzero_dy.index,
+                "Dividend Yield": nonzero_dy.values,
+            }).sort_values("Dividend Yield", ascending=False)
+            st.dataframe(
+                dy_display.style.format({"Dividend Yield": "{:.2%}"}),
+                use_container_width=True,
+            )
+        else:
+            st.warning("No real dividend data found for clique stocks. Using market-wide estimates.")
+            price_cols_all = [c for c in raw_data.columns if not c.endswith("_VALUE")]
+            all_prices_full = raw_data[price_cols_all]
+            dy = get_dividend_yields(list(all_prices_full.columns), all_prices_full)
+            dy = dy[dy.index.isin(clique)]
 
         col1, col2 = st.columns(2)
         with col1:
@@ -435,27 +460,42 @@ if st.sidebar.button("Run Optimization", type="primary"):
 
     with tab_fundamental:
         st.subheader("Fundamental Analysis")
-        st.markdown("Stock ranking by Sharpe, return, volatility (composite score).")
+        st.markdown("Stock ranking with real MOEX data (P/E, P/B, Market Cap) + returns-based metrics.")
 
         mult = compute_multiplicators(returns)
-        ranked = rank_stocks(mult)
+
+        with st.spinner("Loading fundamental data from MOEX ISS..."):
+            fund_data = get_fundamental_data(clique)
+
+        if not fund_data.empty:
+            st.info(f"Loaded fundamental data for {len(fund_data)} stocks")
+            merged = mult.merge(
+                fund_data.set_index("ticker"),
+                left_index=True, right_index=True, how="left",
+            )
+        else:
+            st.warning("Could not load fundamental data from MOEX. Using returns-based metrics only.")
+            merged = mult
 
         display_cols = ["annual_return", "annual_volatility", "sharpe", "skewness", "kurtosis"]
-        display_cols = [c for c in display_cols if c in ranked.columns]
+        if "issuecapitalization" in merged.columns:
+            display_cols.insert(0, "issuecapitalization")
+        display_cols = [c for c in display_cols if c in merged.columns]
         st.dataframe(
-            ranked[display_cols].style.format({
+            merged[display_cols].style.format({
                 "annual_return": "{:.2%}",
                 "annual_volatility": "{:.2%}",
                 "sharpe": "{:.3f}",
                 "skewness": "{:.3f}",
                 "kurtosis": "{:.3f}",
+                "issuecapitalization": "{:,.0f}",
             }),
             use_container_width=True,
         )
 
         st.subheader("Composite Ranking")
-        top_n_fund = st.slider("Top N stocks by score", 5, len(ranked), min(10, len(ranked)), key="top_n_fund")
-        top_stocks = ranked.head(top_n_fund)
+        top_n_fund = st.slider("Top N stocks by score", 5, len(merged), min(10, len(merged)), key="top_n_fund")
+        top_stocks = merged.head(top_n_fund)
         st.bar_chart(top_stocks["composite_score"])
 
     with tab_bonds:

@@ -229,6 +229,61 @@ def get_dividends(ticker: str) -> pd.DataFrame | None:
     return None
 
 
+def get_dividend_yields(
+    tickers: list[str],
+    prices: pd.DataFrame,
+    lookback_days: int = 365,
+) -> pd.Series:
+    """Расчёт реальной дивидендной доходности по данным MOEX ISS.
+
+    Для каждого тикера загружает историю дивидендов через MOEX ISS API,
+    суммирует дивиденды за последние lookback_days дней и делит на текущую цену.
+
+    Args:
+        tickers: Список тикеров.
+        prices: DataFrame с ценами закрытия (столбцы = тикеры).
+        lookback_days: Период для суммирования дивидендов (по умолчанию 365).
+
+    Returns:
+        Series с дивидендной доходностью по каждому тикеру.
+    """
+    from datetime import timedelta
+
+    now = pd.Timestamp.now()
+    cutoff = now - timedelta(days=lookback_days)
+    yields = {}
+
+    for ticker in tickers:
+        if ticker not in prices.columns:
+            yields[ticker] = 0.0
+            continue
+
+        current_price = prices[ticker].iloc[-1]
+        if pd.isna(current_price) or current_price <= 0:
+            yields[ticker] = 0.0
+            continue
+
+        divs = get_dividends(ticker)
+        if divs is None or divs.empty:
+            yields[ticker] = 0.0
+            continue
+
+        recent = divs[divs["registryclosedate"] >= cutoff]
+        if recent.empty:
+            yields[ticker] = 0.0
+            continue
+
+        total_divs = recent["value"].sum()
+        yields[ticker] = total_divs / current_price
+
+        logger.info(
+            "%s: dividend yield = %.2f%% (%.2f RUB / %.2f RUB)",
+            ticker, yields[ticker] * 100, total_divs, current_price,
+        )
+
+    return pd.Series(yields)
+
+
 def adjust_prices_for_dividends(
     prices: pd.DataFrame,
     tickers: list[str] | None = None,
