@@ -1,7 +1,5 @@
 """Tests for i18n and glossary modules."""
 
-import pytest
-
 from moex_portfolio.glossary import get_all_terms, get_glossary_entry
 from moex_portfolio.i18n import t
 
