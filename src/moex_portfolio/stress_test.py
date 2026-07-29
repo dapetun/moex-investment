@@ -95,8 +95,11 @@ def run_stress_test(
     start = pd.Timestamp(scenario.start_date)
     end = pd.Timestamp(scenario.end_date)
 
+    # Убеждаемся, что индекс — DatetimeIndex
+    idx = pd.to_datetime(returns.index)
+
     # Фильтруем данные по датам сценария
-    mask = (returns.index >= start) & (returns.index <= end)
+    mask = (idx >= start) & (idx <= end)
     scenario_returns = returns.loc[mask]
 
     if len(scenario_returns) == 0:
