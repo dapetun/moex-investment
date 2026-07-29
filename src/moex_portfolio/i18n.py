@@ -309,6 +309,23 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "how_step5": {"ru": "**Оптимизация**: Markowitz Mean-Variance со сжатием Ledoit-Wolf", "en": "**Optimization**: Markowitz Mean-Variance with Ledoit-Wolf covariance shrinkage"},
     "how_step6": {"ru": "**Анализ рисков**: Монте-Карло, VaR/CVaR, кривая капитала", "en": "**Risk Analysis**: Monte Carlo simulation, VaR/CVaR, equity curve"},
     "how_step7": {"ru": "**Экспорт**: Скачайте полный Excel-отчёт со всеми результатами", "en": "**Export**: Download full Excel report with all results"},
+
+    # ─── Machine Learning ─────────────────────────────────
+    "tab_ml": {"ru": "ML Прогноз", "en": "ML Forecast"},
+    "ml_title": {"ru": "Машинное обучение: прогноз доходности", "en": "Machine Learning: Return Forecasting"},
+    "ml_desc": {"ru": "Прогноз средней доходности портфеля на следующий день. Walk-forward обучение, инкрементальное дообучение (partial_fit).", "en": "Forecast average portfolio return for next day. Walk-forward training, incremental learning (partial_fit)."},
+    "ml_method": {"ru": "Метод", "en": "Method"},
+    "ml_model": {"ru": "Модель", "en": "Model"},
+    "ml_train_window": {"ru": "Окно обучения (дни)", "en": "Train window (days)"},
+    "ml_retrain_freq": {"ru": "Частота переобучения (дни)", "en": "Retrain frequency (days)"},
+    "ml_training": {"ru": "Обучение модели...", "en": "Training model..."},
+    "ml_dir_acc": {"ru": "Точность направления", "en": "Direction Accuracy"},
+    "ml_inc_model": {"ru": "Инкрементальная модель", "en": "Incremental model"},
+    "ml_init_window": {"ru": "Начальное окно", "en": "Initial window"},
+    "ml_inc_updates": {"ru": "Обновлений модели: {} ", "en": "Model updates: {} "},
+    "ml_inc_vs_full": {"ru": "Сравнение: инкрементальное vs полное переобучение", "en": "Comparison: incremental vs full retrain"},
+    "ml_comparing": {"ru": "Сравнение моделей...", "en": "Comparing models..."},
+    "ml_features": {"ru": "Признаки (features)", "en": "Features"},
 }
 
 

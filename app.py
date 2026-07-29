@@ -71,6 +71,14 @@ from moex_portfolio.glossary import get_glossary_entry
 from moex_portfolio.graph_analysis import build_correlation_graph, find_max_clique
 from moex_portfolio.hrp import optimize_hrp
 from moex_portfolio.i18n import t
+from moex_portfolio.ml_models import (
+    build_features,
+    compare_ml_models,
+    incremental_train,
+    incremental_vs_full_retrain,
+    train_ml_model,
+    walk_forward_predict,
+)
 from moex_portfolio.merton import full_merton_analysis
 from moex_portfolio.metrics import portfolio_metrics
 from moex_portfolio.multi_asset import (
@@ -465,6 +473,7 @@ if st.sidebar.button(t("run_optimization", lang=lang), type="primary"):
         "tab_rebal", "tab_stress", "tab_bl", "tab_hrp", "tab_rolling",
         "tab_dividends", "tab_fundamental", "tab_bonds", "tab_merton",
         "tab_backtest", "tab_risk_budget", "tab_drawdowns", "tab_multi", "tab_benchmark",
+        "tab_ml",
     ]
     tab_labels = [t(k, lang=lang) for k in tab_keys]
     tabs = st.tabs(tab_labels)
@@ -1145,6 +1154,87 @@ if st.sidebar.button(t("run_optimization", lang=lang), type="primary"):
                     st.line_chart(bm_metrics["rolling_ir"])
         else:
             st.warning(f"Could not load {benchmark_ticker} index data from MOEX.")
+
+    # ═══════════════════════════════════════════════════════
+    # TAB 20: MACHINE LEARNING
+    # ═══════════════════════════════════════════════════════
+    with tabs[19]:
+        st.subheader(t("ml_title", lang=lang))
+        st.markdown(t("ml_desc", lang=lang))
+
+        ml_col1, ml_col2 = st.columns(2)
+        with ml_col1:
+            ml_method = st.radio(
+                t("ml_method", lang=lang),
+                ["Walk-Forward", "Incremental (partial_fit)", "Compare All"],
+                key="ml_method",
+            )
+        with ml_col2:
+            ml_model = st.selectbox(
+                t("ml_model", lang=lang),
+                ["ridge", "lasso", "rf", "gbr", "sgd", "pa"],
+                index=0,
+                key="ml_model_select",
+            )
+            ml_train_window = st.slider(t("ml_train_window", lang=lang), 100, 400, 252, 25, key="ml_tw")
+            ml_retrain_freq = st.slider(t("ml_retrain_freq", lang=lang), 1, 63, 21, 1, key="ml_rf")
+
+        if ml_method == "Walk-Forward":
+            with st.spinner(t("ml_training", lang=lang)):
+                result = walk_forward_predict(
+                    clique_returns, model_name=ml_model,
+                    train_window=ml_train_window, retrain_freq=ml_retrain_freq,
+                )
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("RMSE", f"{result.rmse:.6f}")
+            c2.metric("MAE", f"{result.mae:.6f}")
+            c3.metric("R²", f"{result.r2:.4f}")
+            c4.metric(t("ml_dir_acc", lang=lang), f"{result.direction_accuracy:.1%}")
+            st.line_chart(pd.DataFrame({"Actual": result.actuals, "Predicted": result.predictions}))
+
+        elif ml_method == "Incremental (partial_fit)":
+            inc_model = st.selectbox(
+                t("ml_inc_model", lang=lang),
+                ["sgd", "pa"],
+                key="ml_inc_model",
+            )
+            ml_init_window = st.slider(t("ml_init_window", lang=lang), 100, 400, 252, 25, key="ml_iw")
+
+            with st.spinner(t("ml_training", lang=lang)):
+                inc_result = incremental_train(
+                    clique_returns, model_name=inc_model,
+                    initial_window=ml_init_window, update_freq=1,
+                )
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("RMSE", f"{inc_result.rmse:.6f}")
+            c2.metric("MAE", f"{inc_result.mae:.6f}")
+            c3.metric("R²", f"{inc_result.r2:.4f}")
+            c4.metric(t("ml_dir_acc", lang=lang), f"{inc_result.direction_accuracy:.1%}")
+            st.info(t("ml_inc_updates", inc_result.n_updates, lang=lang))
+            st.line_chart(pd.DataFrame({"Actual": inc_result.actuals, "Predicted": inc_result.predictions}))
+
+            with st.expander(t("ml_inc_vs_full", lang=lang)):
+                with st.spinner(t("ml_comparing", lang=lang)):
+                    comp_df = incremental_vs_full_retrain(
+                        clique_returns, model_name=inc_model,
+                        initial_window=ml_init_window, retrain_freq=ml_retrain_freq,
+                    )
+                if not comp_df.empty:
+                    st.dataframe(comp_df, use_container_width=True)
+
+        else:
+            with st.spinner(t("ml_comparing", lang=lang)):
+                comparison = compare_ml_models(
+                    clique_returns,
+                    model_names=["ridge", "lasso", "rf", "gbr", "sgd", "pa"],
+                    method="walk_forward",
+                    train_window=ml_train_window, retrain_freq=ml_retrain_freq,
+                )
+            st.dataframe(comparison.style.highlight_max(axis=0, subset=["R²", "Direction Accuracy"]), use_container_width=True)
+
+        with st.expander(t("ml_features", lang=lang)):
+            feat = build_features(clique_returns)
+            st.dataframe(feat.describe(), use_container_width=True)
 
     # ─── Export ──────────────────────────────────────────
     st.markdown("---")

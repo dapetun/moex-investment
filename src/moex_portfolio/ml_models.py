@@ -1,10 +1,10 @@
 """ML-модели для прогнозирования доходности акций.
 
-Реализует walk-forward прогнозирование с использованием:
-- Ridge / Lasso регрессия
-- Random Forest
-- Gradient Boosting
-- FLAML AutoML (автоматический подбор алгоритма и гиперпараметров)
+Реализует:
+- Обучение с train/test split (Ridge, Lasso, RF, GBR)
+- Walk-forward прогнозирование с переобучением
+- FLAML AutoML (автоматический подбор алгоритма)
+- Инкрементальное дообучение (partial_fit): SGD, Passive-Aggressive
 
 Фичи: lagged returns, rolling statistics, volume, momentum.
 Цель: прогноз направления/величины доходности на следующий день.
@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
-from sklearn.linear_model import Lasso, Ridge
+from sklearn.linear_model import Lasso, Ridge, SGDRegressor
 from sklearn.metrics import (
     accuracy_score,
     mean_absolute_error,
@@ -341,6 +341,15 @@ def compare_ml_models(
         try:
             if name == "automl":
                 result = automl_train(returns, volume, **kwargs)
+            elif name in INCREMENTAL_MODELS:
+                inc = incremental_train(returns, volume, model_name=name, **kwargs)
+                result = MLResult(
+                    model_name=inc.model_name, predictions=inc.predictions,
+                    actuals=inc.actuals, rmse=inc.rmse, mae=inc.mae, r2=inc.r2,
+                    direction_accuracy=inc.direction_accuracy,
+                    feature_importance=inc.feature_importance,
+                    train_size=inc.train_size, test_size=inc.test_size,
+                )
             elif method == "walk_forward":
                 result = walk_forward_predict(returns, volume, model_name=name, **kwargs)
             else:
@@ -629,3 +638,250 @@ def compare_with_automl(
     except Exception as e:
         logger.warning("AutoML failed: %s", e)
         return manual_results
+
+
+# ---------------------------------------------------------------------------
+# Инкрементальное дообучение (partial_fit)
+# ---------------------------------------------------------------------------
+
+INCREMENTAL_MODELS = {
+    "sgd": lambda: SGDRegressor(
+        loss="squared_error", penalty="l2", alpha=0.001,
+        max_iter=2000, tol=1e-4, random_state=42,
+    ),
+    "pa": lambda: SGDRegressor(
+        loss="epsilon_insensitive", penalty=None, learning_rate="pa1",
+        eta0=1.0, max_iter=2000, tol=1e-4, random_state=42,
+    ),
+}
+
+
+@dataclass
+class IncrementalResult:
+    """Результат инкрементального обучения."""
+
+    model_name: str
+    predictions: pd.Series
+    actuals: pd.Series
+    rmse: float
+    mae: float
+    r2: float
+    direction_accuracy: float
+    n_updates: int
+    feature_importance: dict[str, float] = field(default_factory=dict)
+    train_size: int = 0
+    test_size: int = 0
+
+
+def incremental_train(
+    returns: pd.DataFrame,
+    volume: pd.DataFrame | None = None,
+    model_name: str = "sgd",
+    initial_window: int = 252,
+    update_freq: int = 1,
+    lags: list[int] | None = None,
+    windows: list[int] | None = None,
+) -> IncrementalResult:
+    """Инкрементальное обучение через partial_fit.
+
+    Модели обучаются порциями: начальное обучение на initial_window,
+    затем обновление по update_freq дней. Scaler тоже обновляется
+    через partial_fit — нет переобучения на исторических данных.
+
+    Args:
+        returns: DataFrame с дневными доходностями.
+        volume: DataFrame с объёмами (опционально).
+        model_name: 'sgd' (SGDRegressor) или 'pa' (PassiveAggressiveRegressor).
+        initial_window: Начальное окно обучения (дней).
+        update_freq: Частота обновления модели (дней).
+        lags: Lag параметры для build_features.
+        windows: Window параметры для build_features.
+
+    Returns:
+        IncrementalResult с предсказаниями и метриками.
+    """
+    if model_name not in INCREMENTAL_MODELS:
+        raise ValueError(
+            f"Unknown incremental model: {model_name}. "
+            f"Use one of: {list(INCREMENTAL_MODELS.keys())}"
+        )
+
+    features = build_features(returns, volume, lags=lags, windows=windows)
+    target = returns.mean(axis=1).shift(-1)
+
+    valid_mask = features.notna().all(axis=1) & target.notna()
+    features = features[valid_mask]
+    target = target[valid_mask]
+
+    if len(features) < initial_window + 21:
+        raise ValueError(
+            f"Insufficient data for incremental learning: {len(features)} samples, "
+            f"need {initial_window + 21}"
+        )
+
+    model = INCREMENTAL_MODELS[model_name]()
+    scaler = StandardScaler()
+
+    X_init = features.iloc[:initial_window]
+    y_init = target.iloc[:initial_window]
+    X_init_s = scaler.fit_transform(X_init)
+    model.partial_fit(X_init_s, y_init)
+
+    predictions_list = []
+    actuals_list = []
+
+    i = initial_window
+    n_updates = 1
+
+    while i < len(features):
+        chunk_end = min(i + update_freq, len(features))
+        X_chunk = features.iloc[i:chunk_end]
+        y_chunk = target.iloc[i:chunk_end]
+
+        X_chunk_s = scaler.transform(X_chunk)
+        preds = model.predict(X_chunk_s)
+
+        predictions_list.extend(preds)
+        actuals_list.extend(y_chunk.values)
+
+        model.partial_fit(X_chunk_s, y_chunk)
+        n_updates += 1
+
+        i = chunk_end
+
+    idx = features.index[initial_window:initial_window + len(predictions_list)]
+    predictions = pd.Series(predictions_list, index=idx, name="predicted")
+    actuals = pd.Series(actuals_list, index=idx, name="actual")
+
+    rmse = float(np.sqrt(mean_squared_error(actuals, predictions)))
+    mae = float(mean_absolute_error(actuals, predictions))
+    r2 = float(r2_score(actuals, predictions))
+
+    actual_dir = np.sign(actuals.values)
+    pred_dir = np.sign(predictions.values)
+    direction_accuracy = float(accuracy_score(actual_dir, pred_dir))
+
+    feat_imp = {}
+    if hasattr(model, "coef_"):
+        feat_imp = dict(zip(features.columns, np.abs(model.coef_)))
+        total = sum(feat_imp.values())
+        if total > 0:
+            feat_imp = {k: v / total for k, v in feat_imp.items()}
+
+    logger.info(
+        "Incremental '%s': %d updates, RMSE=%.6f, R²=%.4f, Direction=%.1f%%",
+        model_name, n_updates, rmse, r2, direction_accuracy * 100,
+    )
+
+    return IncrementalResult(
+        model_name=f"incremental_{model_name}",
+        predictions=predictions,
+        actuals=actuals,
+        rmse=rmse,
+        mae=mae,
+        r2=r2,
+        direction_accuracy=direction_accuracy,
+        n_updates=n_updates,
+        feature_importance=dict(sorted(feat_imp.items(), key=lambda x: x[1], reverse=True)[:15]),
+        train_size=initial_window,
+        test_size=len(predictions_list),
+    )
+
+
+def incremental_vs_full_retrain(
+    returns: pd.DataFrame,
+    volume: pd.DataFrame | None = None,
+    model_name: str = "sgd",
+    initial_window: int = 252,
+    retrain_freq: int = 21,
+    lags: list[int] | None = None,
+    windows: list[int] | None = None,
+) -> pd.DataFrame:
+    """Сравнение инкрементального обучения и полного переобучения.
+
+    Для каждой модели строит два варианта:
+    - incremental: partial_fit на новых данных (быстрое обновление)
+    - full_retrain: полное переобучение на всём окне (каждые retrain_freq)
+
+    Args:
+        returns: DataFrame с доходностями.
+        volume: DataFrame с объёмами.
+        model_name: 'sgd' или 'pa'.
+        initial_window: Начальное окно.
+        retrain_freq: Частота переобучения для полного варианта.
+        lags: Lag параметры.
+        windows: Window параметры.
+
+    Returns:
+        DataFrame с сравнением двух подходов.
+    """
+    results = []
+
+    try:
+        inc = incremental_train(
+            returns, volume, model_name=model_name,
+            initial_window=initial_window, update_freq=1,
+            lags=lags, windows=windows,
+        )
+        results.append({
+            "Model": f"Incremental {model_name}",
+            "RMSE": inc.rmse,
+            "MAE": inc.mae,
+            "R²": inc.r2,
+            "Direction Accuracy": inc.direction_accuracy,
+            "Train Size": inc.train_size,
+            "Test Size": inc.test_size,
+            "Updates": inc.n_updates,
+        })
+    except Exception as exc:
+        logger.warning("Incremental model '%s' failed: %s", model_name, exc)
+
+    sgd_models = {
+        "sgd": lambda: SGDRegressor(
+            loss="squared_error", penalty="l2", alpha=0.001,
+            max_iter=2000, tol=1e-4, random_state=42,
+        ),
+    }
+    if model_name in sgd_models:
+        try:
+            full = walk_forward_predict(
+                returns, volume, model_name="ridge",
+                train_window=initial_window, retrain_freq=retrain_freq,
+                lags=lags, windows=windows,
+            )
+            results.append({
+                "Model": f"Full retrain ({model_name})",
+                "RMSE": full.rmse,
+                "MAE": full.mae,
+                "R²": full.r2,
+                "Direction Accuracy": full.direction_accuracy,
+                "Train Size": full.train_size,
+                "Test Size": full.test_size,
+                "Updates": 0,
+            })
+        except Exception as exc:
+            logger.warning("Full retrain for '%s' failed: %s", model_name, exc)
+
+    if not results:
+        return pd.DataFrame()
+
+    return pd.DataFrame(results)
+
+
+def get_incremental_model(model_name: str):
+    """Получить инкрементальную модель и scaler по имени.
+
+    Удобно для последовательного обновления в продакшене.
+
+    Args:
+        model_name: 'sgd' или 'pa'.
+
+    Returns:
+        Кортеж (model, scaler).
+    """
+    if model_name not in INCREMENTAL_MODELS:
+        raise ValueError(
+            f"Unknown incremental model: {model_name}. "
+            f"Use one of: {list(INCREMENTAL_MODELS.keys())}"
+        )
+    return INCREMENTAL_MODELS[model_name](), StandardScaler()

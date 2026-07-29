@@ -193,3 +193,78 @@ def test_compare_models_with_automl_key(sample_returns):
     assert len(df) == 2
     model_names = df["Model"].tolist()
     assert any("automl" in m for m in model_names)
+
+
+# --- Incremental learning tests ---
+
+
+def test_incremental_sgd(sample_returns):
+    from moex_portfolio.ml_models import IncrementalResult, incremental_train
+
+    result = incremental_train(
+        sample_returns, model_name="sgd",
+        initial_window=200, update_freq=5,
+    )
+    assert isinstance(result, IncrementalResult)
+    assert result.model_name == "incremental_sgd"
+    assert len(result.predictions) > 0
+    assert len(result.predictions) == len(result.actuals)
+    assert result.rmse >= 0
+    assert result.mae >= 0
+    assert 0 <= result.direction_accuracy <= 1.0
+    assert result.n_updates > 1
+    assert result.train_size == 200
+    assert result.test_size > 0
+
+
+def test_incremental_pa(sample_returns):
+    from moex_portfolio.ml_models import incremental_train
+
+    result = incremental_train(
+        sample_returns, model_name="pa",
+        initial_window=200, update_freq=10,
+    )
+    assert result.model_name == "incremental_pa"
+    assert result.rmse >= 0
+    assert result.n_updates > 1
+
+
+def test_incremental_invalid_model(sample_returns):
+    from moex_portfolio.ml_models import incremental_train
+
+    with pytest.raises(ValueError, match="Unknown incremental model"):
+        incremental_train(sample_returns, model_name="invalid")
+
+
+def test_incremental_insufficient_data():
+    from moex_portfolio.ml_models import incremental_train
+
+    tiny = pd.DataFrame(np.random.randn(50, 3), columns=["A", "B", "C"])
+    with pytest.raises(ValueError, match="Insufficient data"):
+        incremental_train(tiny, model_name="sgd", initial_window=200)
+
+
+def test_incremental_vs_full(sample_returns):
+    from moex_portfolio.ml_models import incremental_vs_full_retrain
+
+    df = incremental_vs_full_retrain(
+        sample_returns, model_name="sgd",
+        initial_window=200, retrain_freq=21,
+    )
+    assert len(df) >= 1
+    assert "Model" in df.columns
+    assert "RMSE" in df.columns
+
+
+def test_get_incremental_model():
+    from moex_portfolio.ml_models import get_incremental_model
+
+    model, scaler = get_incremental_model("sgd")
+    assert hasattr(model, "partial_fit")
+    assert hasattr(scaler, "partial_fit")
+
+    model2, scaler2 = get_incremental_model("pa")
+    assert hasattr(model2, "partial_fit")
+
+    with pytest.raises(ValueError, match="Unknown incremental model"):
+        get_incremental_model("invalid")
