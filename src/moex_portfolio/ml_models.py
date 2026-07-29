@@ -28,6 +28,17 @@ from sklearn.preprocessing import StandardScaler
 logger = logging.getLogger(__name__)
 
 
+def _fix_for_flaml(df: pd.DataFrame) -> pd.DataFrame:
+    """Конвертирует columns dtype в object для совместимости FLAML + pandas 3.x.
+
+    pandas 3.x использует StringDtype для строковых столбцов,
+    а FLAML вызывает np.issubdtype(columns.dtype, np.integer) который падает.
+    """
+    fixed = df.copy()
+    fixed.columns = fixed.columns.astype(object)
+    return fixed
+
+
 @dataclass
 class MLResult:
     """Результат ML-модели."""
@@ -420,6 +431,9 @@ def automl_train(
     X_train, X_test = features.iloc[:split_idx], features.iloc[split_idx:]
     y_train, y_test = target.iloc[:split_idx], target.iloc[split_idx:]
 
+    X_train = _fix_for_flaml(X_train)
+    X_test = _fix_for_flaml(X_test)
+
     automl = AutoML()
     automl_settings = {
         "time_budget": time_budget,
@@ -527,9 +541,9 @@ def automl_walk_forward(
         train_end = start_idx
         test_end = min(start_idx + retrain_freq, len(features))
 
-        X_train = features.iloc[:train_end]
+        X_train = _fix_for_flaml(features.iloc[:train_end])
         y_train = target.iloc[:train_end]
-        X_test = features.iloc[train_end:test_end]
+        X_test = _fix_for_flaml(features.iloc[train_end:test_end])
         y_test = target.iloc[train_end:test_end]
 
         if X_test.empty:

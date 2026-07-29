@@ -132,6 +132,7 @@ def test_compare_models_walk_forward(sample_returns):
 
 
 def test_automl_train(sample_returns):
+    pytest.importorskip("flaml", reason="FLAML not installed")
     from moex_portfolio.ml_models import automl_train
 
     result = automl_train(sample_returns, time_budget=10)
@@ -147,6 +148,7 @@ def test_automl_train(sample_returns):
 
 
 def test_automl_train_with_volume(sample_returns, sample_volume):
+    pytest.importorskip("flaml", reason="FLAML not installed")
     from moex_portfolio.ml_models import automl_train
 
     result = automl_train(sample_returns, volume=sample_volume, time_budget=10)
@@ -155,6 +157,7 @@ def test_automl_train_with_volume(sample_returns, sample_volume):
 
 
 def test_automl_train_insufficient_data():
+    pytest.importorskip("flaml", reason="FLAML not installed")
     from moex_portfolio.ml_models import automl_train
 
     tiny = pd.DataFrame(np.random.randn(50, 3), columns=["A", "B", "C"])
