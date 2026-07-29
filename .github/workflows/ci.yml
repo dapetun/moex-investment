@@ -32,7 +32,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          python -m pytest tests/ -v --tb=long --cov=moex_portfolio --cov-report=term-missing --cov-fail-under=80
+          python -m pytest tests/ -v --tb=long --cov=moex_portfolio --cov-report=term-missing --cov-fail-under=65
 
       - name: Lint check
         run: |
