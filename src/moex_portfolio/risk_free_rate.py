@@ -55,9 +55,9 @@ def fetch_cbr_key_rate() -> float | None:
         resp.raise_for_status()
 
         # Парсим XML
-        import xml.etree.ElementTree as ET
+        import xml.etree.ElementTree as ET  # nosec B405 — trusted CBR XML
 
-        root = ET.fromstring(resp.text)
+        root = ET.fromstring(resp.text)  # nosec B314 — trusted CBR XML
         ns = {"soap": "http://www.w3.org/2003/05/soap-envelope",
               "cbr": "http://web.cbr.ru/"}
 
@@ -87,8 +87,8 @@ def _fetch_cbr_key_rate_fallback() -> float | None:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
 
-        import xml.etree.ElementTree as ET
-        root = ET.fromstring(resp.text)
+        import xml.etree.ElementTree as ET  # nosec B405 — trusted CBR XML
+        root = ET.fromstring(resp.text)  # nosec B314 — trusted CBR XML
 
         # Ищем таблицу с ключевыми ставками
         for table in root.findall(".//table"):

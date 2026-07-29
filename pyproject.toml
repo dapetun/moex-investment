@@ -58,3 +58,7 @@ ignore = [
     "E501",   # line too long — cosmetic
 ]
 select = ["E", "F", "W", "I", "C4"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B405", "B314"]  # xml.etree.ElementTree — parsing trusted CBR XML only
