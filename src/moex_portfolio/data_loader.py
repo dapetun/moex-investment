@@ -2,7 +2,8 @@
 
 import logging
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 import requests
@@ -18,6 +19,7 @@ from .config import (
     RETRY_BACKOFF,
     START_DATE,
 )
+from .defaults import DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +249,6 @@ def get_dividend_yields(
     Returns:
         Series с дивидендной доходностью по каждому тикеру.
     """
-    from datetime import timedelta
 
     now = pd.Timestamp.now()
     cutoff = now - timedelta(days=lookback_days)
@@ -561,3 +562,109 @@ def incremental_update(
     return load_all_data_async(
         tickers=tickers, end_date=end_date, use_cache=False,
     )
+
+
+def check_cache_freshness(
+    cache_path: Path | None = None,
+    max_age_hours: int | None = None,
+) -> dict:
+    """Проверка актуальности кэшированных данных.
+
+    Args:
+        cache_path: Путь к CSV-кэшу. Если None — проверяет price_data.csv.
+        max_age_hours: Максимальный возраст кэша в часах. Если None — из defaults.
+
+    Returns:
+        Словарь с информацией о кэше:
+        - exists: bool — существует ли файл
+        - path: str — путь к файлу
+        - last_modified: str — дата последнего изменения (ISO)
+        - age_hours: float — возраст в часах
+        - is_fresh: bool — актуален ли кэш
+        - max_age_hours: int — максимально допустимый возраст
+        - last_data_date: str — последняя дата данных в CSV (или None)
+        - rows: int — количество строк
+        - columns: int — количество столбцов
+    """
+    if cache_path is None:
+        cache_path = DATA_DIR / "price_data.csv"
+    if max_age_hours is None:
+        max_age_hours = DEFAULTS.cache_max_age_hours
+
+    result = {
+        "exists": cache_path.exists(),
+        "path": str(cache_path),
+        "last_modified": None,
+        "age_hours": None,
+        "is_fresh": False,
+        "max_age_hours": max_age_hours,
+        "last_data_date": None,
+        "rows": 0,
+        "columns": 0,
+    }
+
+    if not cache_path.exists():
+        return result
+
+    mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
+    age = datetime.now() - mtime
+    age_hours = age.total_seconds() / 3600
+
+    result["last_modified"] = mtime.isoformat()
+    result["age_hours"] = round(age_hours, 1)
+    result["is_fresh"] = age_hours < max_age_hours
+
+    try:
+        df = pd.read_csv(cache_path, sep=";", index_col="TRADEDATE", nrows=0)
+        result["columns"] = len(df.columns)
+        full_df = pd.read_csv(cache_path, sep=";", index_col="TRADEDATE")
+        result["rows"] = len(full_df)
+        if len(full_df) > 0:
+            result["last_data_date"] = str(full_df.index[-1])
+    except Exception:
+        pass
+
+    return result
+
+
+def auto_update_cache(
+    tickers: list[str] | None = None,
+    end_date: str | date = END_DATE,
+    force: bool = False,
+) -> tuple[pd.DataFrame, dict]:
+    """Автоматическое обновление кэша: загружает данные только если кэш устарел.
+
+    Args:
+        tickers: Список тикеров. Если None — загружает все.
+        end_date: Конечная дата.
+        force: Принудительная перезагрузка (игнорировать кэш).
+
+    Returns:
+        Кортеж (DataFrame с данными, info dict с результатом обновления).
+    """
+    cache_info = check_cache_freshness()
+
+    if force:
+        logger.info("Force refresh: ignoring cache")
+        data = load_all_data_async(tickers=tickers, end_date=end_date, use_cache=False)
+        new_info = check_cache_freshness()
+        return data, {"action": "force_refresh", "cache": new_info}
+
+    if not cache_info["exists"]:
+        logger.info("No cache found, downloading all data")
+        data = load_all_data_async(tickers=tickers, end_date=end_date, use_cache=False)
+        new_info = check_cache_freshness()
+        return data, {"action": "full_download", "cache": new_info}
+
+    if cache_info["is_fresh"]:
+        logger.info("Cache is fresh (%.1fh old), loading from cache", cache_info["age_hours"])
+        data = load_all_data_async(tickers=tickers, end_date=end_date, use_cache=True)
+        return data, {"action": "loaded_from_cache", "cache": cache_info}
+
+    logger.info(
+        "Cache is stale (%.1fh old, max %dh), running incremental update",
+        cache_info["age_hours"], DEFAULTS.cache_max_age_hours,
+    )
+    data = incremental_update(tickers=tickers, end_date=end_date, use_cache=True)
+    new_info = check_cache_freshness()
+    return data, {"action": "incremental_update", "cache": new_info}

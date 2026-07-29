@@ -51,10 +51,13 @@ from moex_portfolio.config import (
 )
 from moex_portfolio.correlation import compute_correlation_matrix
 from moex_portfolio.data_loader import (
+    auto_update_cache,
+    check_cache_freshness,
     get_all_shares,
     get_dividend_yields,
     load_all_data,
 )
+from moex_portfolio.defaults import DEFAULTS, get_defaults_dict
 from moex_portfolio.dividend_strategies import (
     compare_dividend_strategies,
     dogs_of_the_dow,
@@ -276,69 +279,148 @@ st.markdown(t("app_subtitle", lang=lang))
 
 # ─── Sidebar: parameters ─────────────────────────────────────
 st.sidebar.header(t("sidebar_params", lang=lang))
+st.sidebar.caption(t("defaults_desc", lang=lang))
+
+if st.sidebar.button(t("reset_defaults", lang=lang), use_container_width=True):
+    for k, v in get_defaults_dict().items():
+        st.session_state[k] = v
+    st.session_state["rerun_reset"] = True
+    st.rerun()
+
+st.sidebar.markdown("---")
 
 corr_threshold = st.sidebar.slider(
     t("corr_threshold", lang=lang),
     min_value=0.0, max_value=1.0,
-    value=CORR_THRESHOLD, step=0.05,
+    value=float(st.session_state.get("corr_threshold", DEFAULTS.corr_threshold)),
+    step=0.05,
     help=_g("Correlation", lang),
+    key="corr_threshold",
 )
 
 min_turnover_m = st.sidebar.number_input(
     t("min_turnover", lang=lang),
-    min_value=1, value=int(MIN_TURNOVER / 1_000_000), step=5,
+    min_value=1,
+    value=int(st.session_state.get("min_turnover_m", DEFAULTS.min_turnover_m)),
+    step=5,
+    key="min_turnover_m",
 )
 min_turnover = min_turnover_m * 1_000_000
 
 max_weight_pct = st.sidebar.slider(
     t("max_weight", lang=lang),
-    min_value=5, value=int(MAX_WEIGHT * 100), max_value=100, step=5,
+    min_value=5,
+    value=int(st.session_state.get("max_weight", DEFAULTS.max_weight) * 100),
+    max_value=100, step=5,
+    key="max_weight_pct",
 )
 max_weight = max_weight_pct / 100.0
 
 risk_free = st.sidebar.number_input(
     t("risk_free", lang=lang),
-    min_value=0.0, value=RISK_FREE_RATE * 100, step=0.5,
+    min_value=0.0,
+    value=float(st.session_state.get("risk_free_rate", DEFAULTS.risk_free_rate)),
+    step=0.5,
+    key="risk_free_rate",
 ) / 100.0
 
 cov_method = st.sidebar.selectbox(
     t("cov_method", lang=lang),
     options=["sample", "ledoit_wolf", "ewma"],
-    index=0,
+    index=["sample", "ledoit_wolf", "ewma"].index(
+        st.session_state.get("cov_method", DEFAULTS.cov_method)
+    ),
     help=_g("sample", lang),
+    key="cov_method",
 )
 
 mc_sims = st.sidebar.number_input(
     t("mc_sims", lang=lang),
-    min_value=1000, value=10_000, step=1000,
+    min_value=1000,
+    value=int(st.session_state.get("mc_simulations", DEFAULTS.mc_simulations)),
+    step=1000,
     help=_g("Monte Carlo", lang),
+    key="mc_simulations",
 )
 
 rebalance_freq = st.sidebar.number_input(
     t("rebal_freq", lang=lang),
-    min_value=5, value=REBALANCE_FREQ_DAYS, step=5,
+    min_value=5,
+    value=int(st.session_state.get("rebalance_freq_days", DEFAULTS.rebalance_freq_days)),
+    step=5,
     help=_g("Rebalancing", lang),
+    key="rebalance_freq_days",
 )
 
 transaction_cost_bps = st.sidebar.number_input(
     t("trans_cost", lang=lang),
-    min_value=0, value=int(TRANSACTION_COST_BPS), step=1,
+    min_value=0,
+    value=int(st.session_state.get("transaction_cost_bps", DEFAULTS.transaction_cost_bps)),
+    step=1,
+    key="transaction_cost_bps",
 )
 
-bl_tau = st.sidebar.slider(t("bl_tau", lang=lang), 0.01, 0.5, 0.05, 0.01)
-bl_n_views = st.sidebar.slider(t("bl_views", lang=lang), 1, 10, 5, 1)
-hrp_method = st.sidebar.selectbox(t("hrp_method", lang=lang), ["single", "complete", "average"], index=0)
+bl_tau = st.sidebar.slider(
+    t("bl_tau", lang=lang), 0.01, 0.5,
+    value=float(st.session_state.get("bl_tau", DEFAULTS.bl_tau)),
+    step=0.01, key="bl_tau",
+)
+bl_n_views = st.sidebar.slider(
+    t("bl_views", lang=lang), 1, 10,
+    value=int(st.session_state.get("bl_n_views", DEFAULTS.bl_n_views)),
+    step=1, key="bl_n_views",
+)
+hrp_method = st.sidebar.selectbox(
+    t("hrp_method", lang=lang),
+    ["single", "complete", "average"],
+    index=["single", "complete", "average"].index(
+        st.session_state.get("hrp_method", DEFAULTS.hrp_method)
+    ),
+    key="hrp_method",
+)
 
 use_cache = st.sidebar.checkbox(t("use_cache", lang=lang), value=True)
 
+# ─── Cache freshness indicator ─────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.caption(t("cache_fresh" if True else "cache_stale", lang=lang))
+cache_info = check_cache_freshness()
+if cache_info["exists"]:
+    is_fresh = cache_info["is_fresh"]
+    icon = "🟢" if is_fresh else "🟡"
+    status_key = "cache_fresh" if is_fresh else "cache_stale"
+    st.sidebar.markdown(f"**{icon} {t(status_key, lang=lang)}**")
+    st.sidebar.caption(t("cache_age", round(cache_info["age_hours"], 1), lang=lang))
+    if cache_info["last_data_date"]:
+        st.sidebar.caption(t("cache_last_date", cache_info["last_data_date"], lang=lang))
+    if cache_info["rows"] > 0:
+        n_tickers = (cache_info["columns"]) // 2
+        st.sidebar.caption(t("cache_rows", cache_info["rows"], n_tickers, lang=lang))
+    if not is_fresh:
+        if st.sidebar.button(t("cache_refresh", lang=lang), use_container_width=True):
+            st.session_state["force_refresh"] = True
+else:
+    st.sidebar.info(t("cache_stale", lang=lang))
+
 # ─── Main pipeline ────────────────────────────────────────────
 if st.sidebar.button(t("run_optimization", lang=lang), type="primary"):
+    force_refresh = st.session_state.pop("force_refresh", False)
     with st.spinner(t("loading_shares", lang=lang)):
         tickers = get_all_shares()
     st.info(t("found_shares", len(tickers), lang=lang))
 
-    with st.spinner(t("loading_prices", lang=lang)):
-        raw_data = load_all_data(tickers, use_cache=use_cache)
+    with st.spinner(t("cache_loading", lang=lang)):
+        raw_data, update_info = auto_update_cache(
+            tickers=tickers, force=force_refresh,
+        )
+
+    action = update_info.get("action", "unknown")
+    if action == "force_refresh":
+        st.info(t("cache_refresh", lang=lang))
+    elif action == "incremental_update":
+        st.info(t("cache_stale", lang=lang) + " — incremental update done")
+    elif action == "loaded_from_cache":
+        pass
 
     with st.spinner(t("filtering", lang=lang)):
         returns, valid_tickers = prepare_returns(raw_data, min_turnover=min_turnover)

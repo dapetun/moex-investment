@@ -49,3 +49,8 @@ STRESS_TEST_SCENARIOS = "all"  # 'all' or list of scenario names
 
 # Dividend adjustment
 ADJUST_FOR_DIVIDENDS = True  # Correct prices for ex-dividend drops
+
+# AutoML (FLAML)
+AUTOML_TIME_BUDGET = 60  # seconds for model search
+AUTOML_MAX_ITER = None  # max iterations (None = unlimited)
+AUTOML_WF_TIME_BUDGET = 30  # seconds per walk-forward step

@@ -29,6 +29,21 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "hrp_method": {"ru": "HRP кластеризация", "en": "HRP clustering"},
     "use_cache": {"ru": "Использовать кэш данных", "en": "Use cached data"},
 
+    # ─── Cache freshness ────────────────────────────────────
+    "cache_fresh": {"ru": "Кэш актуален", "en": "Cache is fresh"},
+    "cache_stale": {"ru": "Кэш устарел", "en": "Cache is stale"},
+    "cache_age": {"ru": "Возраст кэша: {} ч.", "en": "Cache age: {}h"},
+    "cache_rows": {"ru": "{} строк, {} акций", "en": "{} rows, {} stocks"},
+    "cache_last_date": {"ru": "Последняя дата: {}", "en": "Last data date: {}"},
+    "cache_refresh": {"ru": "Обновить данные", "en": "Refresh data"},
+    "cache_force": {"ru": "Принудительно обновить", "en": "Force refresh"},
+    "cache_loading": {"ru": "Загрузка данных (может занять несколько минут)...", "en": "Loading data (may take a few minutes)..."},
+
+    # ─── Defaults ───────────────────────────────────────────
+    "reset_defaults": {"ru": "Сбросить к дефолтным", "en": "Reset to defaults"},
+    "defaults_reset": {"ru": "Параметры сброшены к дефолтным значениям", "en": "Parameters reset to defaults"},
+    "defaults_desc": {"ru": "Значения основаны на теории портфеля (Markowitz, Sharpe, Black-Litterman)", "en": "Values based on portfolio theory (Markowitz, Sharpe, Black-Litterman)"},
+
     # ─── Status messages ───────────────────────────────────
     "loading_shares": {"ru": "Загрузка списка акций MOEX...", "en": "Loading stock list from MOEX..."},
     "found_shares": {"ru": "Найдено акций на MOEX: {}", "en": "Found {} stocks on MOEX"},
