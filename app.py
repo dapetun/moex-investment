@@ -314,13 +314,29 @@ max_weight_pct = st.sidebar.slider(
 )
 max_weight = max_weight_pct / 100.0
 
-risk_free = st.sidebar.number_input(
-    t("risk_free", lang=lang),
-    min_value=0.0,
-    value=float(st.session_state.get("risk_free_rate", DEFAULTS.risk_free_rate)),
-    step=0.5,
-    key="risk_free_rate",
-) / 100.0
+risk_free_source = st.sidebar.selectbox(
+    "Risk-free rate source",
+    options=["CBR key rate", "OFZ yield", "Manual"],
+    index=0,
+    key="risk_free_source_select",
+)
+
+if risk_free_source == "Manual":
+    risk_free = st.sidebar.number_input(
+        t("risk_free", lang=lang),
+        min_value=0.0,
+        value=float(st.session_state.get("risk_free_rate", DEFAULTS.risk_free_rate)),
+        step=0.5,
+        key="risk_free_rate",
+    ) / 100.0
+    risk_free_desc = f"Manual: {risk_free:.2%}"
+else:
+    from moex_portfolio.risk_free_rate import RiskFreeSource, get_risk_free_rate
+    _src = RiskFreeSource.CBR_KEY_RATE if "CBR" in risk_free_source else RiskFreeSource.OFZ_YIELD
+    _rate, _desc = get_risk_free_rate(source=_src)
+    risk_free = _rate / 100.0
+    risk_free_desc = _desc
+    st.sidebar.caption(f"📊 {_desc}")
 
 cov_method = st.sidebar.selectbox(
     t("cov_method", lang=lang),
