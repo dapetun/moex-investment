@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -21,6 +22,11 @@ from moex_portfolio.backtesting import (
     buy_and_hold_backtest,
     compare_backtests,
     walk_forward_backtest,
+)
+from moex_portfolio.benchmark import (
+    compute_benchmark_metrics,
+    get_index_history,
+    summary_table,
 )
 from moex_portfolio.black_litterman import (
     create_views_from_correlation,
@@ -67,6 +73,12 @@ from moex_portfolio.graph_analysis import build_correlation_graph, find_max_cliq
 from moex_portfolio.hrp import optimize_hrp
 from moex_portfolio.merton import full_merton_analysis
 from moex_portfolio.metrics import portfolio_metrics
+from moex_portfolio.multi_asset import (
+    combine_asset_returns,
+    efficient_frontier_multi_asset,
+    min_variance_multi_asset,
+    optimize_multi_asset,
+)
 from moex_portfolio.optimizer import (
     efficient_frontier,
     max_sharpe_portfolio,
@@ -210,8 +222,8 @@ if st.sidebar.button("Run Optimization", type="primary"):
     hrp_result = optimize_hrp(clique_returns, max_weight=max_weight)
 
     # ─── Tabs ─────────────────────────────────────────────────────
-    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress, tab_bl, tab_hrp, tab_rolling, tab_dividends, tab_fundamental, tab_bonds, tab_merton, tab_backtest, tab_risk_budget, tab_drawdowns = st.tabs(
-        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test", "Black-Litterman", "HRP", "Rolling Correlation", "Dividends", "Fundamental", "Bonds", "Merton Model", "Backtesting", "Risk Budget", "Drawdowns"]
+    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress, tab_bl, tab_hrp, tab_rolling, tab_dividends, tab_fundamental, tab_bonds, tab_merton, tab_backtest, tab_risk_budget, tab_drawdowns, tab_multi_asset, tab_benchmark = st.tabs(
+        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test", "Black-Litterman", "HRP", "Rolling Correlation", "Dividends", "Fundamental", "Bonds", "Merton Model", "Backtesting", "Risk Budget", "Drawdowns", "Multi-Asset", "Benchmark"]
     )
 
     with tab_overview:
@@ -687,6 +699,172 @@ if st.sidebar.button("Run Optimization", type="primary"):
             st.subheader("Top Drawdown Periods")
             dd_table = drawdown_summary_table(dd_result, top_n=10)
             st.dataframe(dd_table.style.format({"Drawdown": "{:.2%}"}), use_container_width=True)
+
+    with tab_multi_asset:
+        st.subheader("Multi-Asset Portfolio (Stocks + Bonds)")
+        st.markdown("Combine stocks and bonds in one optimized portfolio for better diversification.")
+
+        st.markdown("---")
+        st.markdown("#### Bond Allocation")
+
+        use_ofz_yields = st.checkbox("Use OFZ yield curve as bond returns", value=True, key="use_ofz")
+
+        bond_yields_input = {}
+        if use_ofz_yields:
+            try:
+                ofz_df = get_ofz_list()
+                if ofz_df is not None and len(ofz_df) > 0:
+                    ofz_tickers = ofz_df["SECID"].tolist()[:5] if "SECID" in ofz_df.columns else []
+                    st.info(f"Loaded {len(ofz_df)} OFZ bonds. Using top {len(ofz_tickers)} by yield.")
+
+                    for t in ofz_tickers:
+                        ytm_col = "YIELDTOOFFER" if "YIELDTOOFFER" in ofz_df.columns else None
+                        if ytm_col:
+                            val = pd.to_numeric(ofz_df.loc[ofz_df["SECID"] == t, ytm_col].iloc[0], errors="coerce")
+                            if pd.notna(val) and val > 0:
+                                bond_yields_input[t] = val / 100.0
+
+                    if bond_yields_input:
+                        yields_df = pd.DataFrame({
+                            "OFZ Ticker": bond_yields_input.keys(),
+                            "YTM (%)": [f"{v*100:.2f}" for v in bond_yields_input.values()],
+                        })
+                        st.dataframe(yields_df, use_container_width=True)
+                else:
+                    st.warning("Could not load OFZ data.")
+            except Exception as e:
+                st.warning(f"OFZ load error: {e}")
+
+        if not bond_yields_input:
+            st.markdown("Enter bond yields manually:")
+            n_bonds = st.number_input("Number of bonds", 0, 10, 2, key="n_bonds_manual")
+            for i in range(n_bonds):
+                col1, col2 = st.columns(2)
+                with col1:
+                    name = st.text_input(f"Bond {i+1} name", value=f"BOND_{i+1}", key=f"bond_name_{i}")
+                with col2:
+                    ytm = st.number_input(f"YTM for {name} (%)", 0.0, 30.0, 12.0, 0.5, key=f"bond_ytm_{i}")
+                bond_yields_input[name] = ytm / 100.0
+
+        st.markdown("---")
+        st.markdown("#### Asset Allocation Constraints")
+        col1, col2 = st.columns(2)
+        with col1:
+            max_stock_pct = st.slider("Max stock allocation (%)", 10, 100, 80, 5, key="max_stock")
+        with col2:
+            min_bond_pct = st.slider("Min bond allocation (%)", 0, 50, 10, 5, key="min_bond")
+
+        asset_constraints = {
+            "stock": {"max": max_stock_pct / 100.0},
+            "bond": {"min": min_bond_pct / 100.0},
+        }
+
+        if st.button("Run Multi-Asset Optimization", key="run_multi"):
+            bond_yields_series = pd.Series(bond_yields_input) if bond_yields_input else None
+            combined = combine_asset_returns(
+                clique_returns, bond_yields=bond_yields_series,
+            )
+
+            ma_sharpe = optimize_multi_asset(
+                combined, risk_free_rate=risk_free,
+                max_weight=max_weight, asset_constraints=asset_constraints,
+            )
+            ma_minvar = min_variance_multi_asset(
+                combined, max_weight=max_weight, asset_constraints=asset_constraints,
+            )
+            ma_ef = efficient_frontier_multi_asset(
+                combined, n_points=30, max_weight=max_weight,
+                asset_constraints=asset_constraints,
+            )
+
+            st.success(f"Multi-asset portfolio: {combined.shape[1]} assets ({clique_returns.shape[1]} stocks + {combined.shape[1] - clique_returns.shape[1]} bonds)")
+
+            st.markdown("#### Max Sharpe Portfolio")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Return", f"{ma_sharpe['return']:.2%}")
+            c2.metric("Volatility", f"{ma_sharpe['volatility']:.2%}")
+            c3.metric("Sharpe", f"{ma_sharpe['sharpe']:.3f}")
+            c4.metric("Stock/Bond", f"{ma_sharpe['stock_weight']:.0%} / {ma_sharpe['bond_weight']:.0%}")
+
+            tickers_ma = ma_sharpe["tickers"]
+            weights_ma = ma_sharpe["weights"]
+            display_labels = [f"{t} ({'S' if not t.startswith('BOND_') else 'B'})" for t in tickers_ma]
+            st.plotly_chart(plot_weights_bar_plotly(display_labels, weights_ma, title="Multi-Asset Weights"), use_container_width=True)
+
+            st.markdown("#### Min Variance Portfolio")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Return", f"{ma_minvar['return']:.2%}")
+            c2.metric("Volatility", f"{ma_minvar['volatility']:.2%}")
+            c3.metric("Sharpe", f"{ma_minvar['sharpe']:.3f}")
+            c4.metric("Stock/Bond", f"{ma_minvar['stock_weight']:.0%} / {ma_minvar['bond_weight']:.0%}")
+
+            st.plotly_chart(plot_weights_bar_plotly(display_labels, ma_minvar["weights"], title="Min Variance Weights"), use_container_width=True)
+
+            if len(ma_ef) > 0:
+                st.markdown("#### Efficient Frontier (Multi-Asset)")
+                ef_display = pd.DataFrame({
+                    "Return": ma_ef["return"],
+                    "Volatility": ma_ef["volatility"],
+                    "Sharpe": ma_ef["sharpe"],
+                    "Stock%": ma_ef["stock_weight"],
+                    "Bond%": ma_ef["bond_weight"],
+                })
+                st.line_chart(ef_display.set_index("Volatility")["Return"])
+
+    with tab_benchmark:
+        st.subheader("Benchmark Comparison")
+        st.markdown("Compare your portfolio against MOEX index (IMOEX) or government bonds (RGBI).")
+
+        benchmark_ticker = st.selectbox("Benchmark Index", ["IMOEX", "RGBI"], key="bench_idx")
+
+        with st.spinner(f"Loading {benchmark_ticker} index history..."):
+            bench_returns = get_index_history(benchmark_ticker)
+
+        if len(bench_returns) > 0:
+            st.info(f"Loaded {len(bench_returns)} days of {benchmark_ticker} data")
+
+            port_eq = equity_curve(clique_returns, opt_result["weights"])
+            common_idx = port_eq.index.intersection(bench_returns.index)
+
+            if len(common_idx) < 50:
+                st.warning(f"Only {len(common_idx)} overlapping days. Need at least 50.")
+            else:
+                port_ret_series = port_eq.loc[common_idx].pct_change().dropna()
+                bench_ret_series = bench_returns.loc[common_idx].loc[port_ret_series.index]
+
+                bm_metrics = compute_benchmark_metrics(port_ret_series, bench_ret_series, risk_free=risk_free)
+                bm_summary = summary_table(port_ret_series, bench_ret_series, risk_free)
+
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Portfolio Return", f"{bm_metrics['portfolio_return']:.2%}")
+                c2.metric(f"{benchmark_ticker} Return", f"{bm_metrics['benchmark_return']:.2%}")
+                c3.metric("Excess Return", f"{bm_metrics['excess_return']:.2%}")
+                c4.metric("Tracking Error", f"{bm_metrics['tracking_error']:.2%}")
+
+                c5, c6, c7, c8 = st.columns(4)
+                c5.metric("Information Ratio", f"{bm_metrics['information_ratio']:.3f}")
+                c6.metric("R²", f"{bm_metrics['r_squared']:.4f}")
+                c7.metric("Beta", f"{bm_metrics['beta']:.3f}")
+                c8.metric("Jensen's Alpha", f"{bm_metrics['alpha']:.2%}")
+
+                st.markdown("#### Full Comparison Table")
+                st.dataframe(bm_summary, use_container_width=True)
+
+                st.markdown("#### Cumulative Returns")
+                cum_port = pd.Series(np.cumprod(1 + port_ret_series.values), index=port_ret_series.index, name="Portfolio")
+                cum_bench = pd.Series(np.cumprod(1 + bench_ret_series.values), index=bench_ret_series.index, name=benchmark_ticker)
+                cum_df = pd.concat([cum_port, cum_bench], axis=1)
+                st.line_chart(cum_df)
+
+                st.markdown("#### Active Returns (Portfolio - Benchmark)")
+                if "active_returns" in bm_metrics:
+                    st.line_chart(bm_metrics["active_returns"])
+
+                if "rolling_ir" in bm_metrics and len(bm_metrics["rolling_ir"]) > 0:
+                    st.markdown("#### Rolling Information Ratio (60d)")
+                    st.line_chart(bm_metrics["rolling_ir"])
+        else:
+            st.warning(f"Could not load {benchmark_ticker} index data from MOEX.")
 
     # ─── Export ──────────────────────────────────────────────
     st.markdown("---")
