@@ -1,9 +1,12 @@
-"""Экспорт результатов в Excel."""
+"""Экспорт результатов в Excel и PDF."""
 
+import logging
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def export_portfolio_to_excel(
@@ -153,4 +156,160 @@ def export_portfolio_to_excel(
             }).sort_values("HRP Weight", ascending=False)
             hrp_df.to_excel(writer, sheet_name="HRP", index=False)
 
+    return filepath
+
+
+def export_portfolio_to_pdf(
+    filepath: str | Path,
+    clique: list[str],
+    opt_result: dict,
+    min_var_result: dict,
+    metrics: dict | None = None,
+    params: dict | None = None,
+    stress_results: list | None = None,
+    bl_result: dict | None = None,
+    hrp_result: dict | None = None,
+    mc_results: pd.DataFrame | None = None,
+) -> Path:
+    """Экспорт результатов оптимизации в PDF (через matplotlib).
+
+    Генерирует многостраничный PDF-отчёт.
+
+    Args:
+        filepath: Путь к PDF файлу.
+        clique: Список тикеров клики.
+        opt_result: Результат max_sharpe_portfolio.
+        min_var_result: Результат min_variance_portfolio.
+        metrics: Словарь с метриками.
+        params: Параметры оптимизации.
+        stress_results: Результаты стресс-тестов.
+        bl_result: Результат Black-Litterman.
+        hrp_result: Результат HRP.
+        mc_results: Результаты Monte Carlo.
+
+    Returns:
+        Path к созданному файлу.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    with PdfPages(filepath) as pdf:
+        # Page 1: Summary
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.axis("off")
+        ax.set_title("MOEX Portfolio Optimization Report", fontsize=20, fontweight="bold", pad=20)
+
+        lines = [
+            f"Assets: {', '.join(clique)}",
+            "",
+            "=== Max Sharpe Portfolio ===",
+            f"  Return: {opt_result['return']:.2%}",
+            f"  Volatility: {opt_result['volatility']:.2%}",
+            f"  Sharpe: {opt_result['sharpe']:.3f}",
+            "",
+            "=== Min Variance Portfolio ===",
+            f"  Return: {min_var_result['return']:.2%}",
+            f"  Volatility: {min_var_result['volatility']:.2%}",
+            f"  Sharpe: {min_var_result['sharpe']:.3f}",
+        ]
+        if metrics:
+            lines.extend([
+                "",
+                "=== Portfolio Metrics ===",
+                f"  Sortino: {metrics.get('sortino', 0):.3f}",
+                f"  Max Drawdown: {metrics.get('max_drawdown', 0):.2%}",
+                f"  Calmar: {metrics.get('calmar', 0):.3f}" if metrics.get('calmar') else "",
+            ])
+        if params:
+            lines.extend(["", "=== Parameters ==="])
+            for k, v in params.items():
+                lines.append(f"  {k}: {v}")
+
+        ax.text(0.05, 0.95, "\n".join(lines), transform=ax.transAxes,
+                fontsize=10, verticalalignment="top", fontfamily="monospace")
+        plt.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # Page 2: Weights
+        fig, ax = plt.subplots(figsize=(10, 6))
+        tickers_sorted = sorted(zip(clique, opt_result["weights"]), key=lambda x: -x[1])
+        names = [t for t, _ in tickers_sorted]
+        weights = [w for _, w in tickers_sorted]
+        ax.barh(names, weights, color="steelblue")
+        ax.set_xlabel("Weight")
+        ax.set_title("Max Sharpe Portfolio Weights")
+        ax.invert_yaxis()
+        plt.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        if mc_results is not None:
+            fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+            axes[0].hist(mc_results["annual_return"] * 100, bins=50, color="steelblue", alpha=0.7)
+            axes[0].set_title("Annual Return Distribution")
+            axes[0].set_xlabel("Return (%)")
+            axes[1].hist(mc_results["annual_volatility"] * 100, bins=50, color="orange", alpha=0.7)
+            axes[1].set_title("Volatility Distribution")
+            axes[1].set_xlabel("Volatility (%)")
+            axes[2].hist(mc_results["max_drawdown"] * 100, bins=50, color="green", alpha=0.7)
+            axes[2].set_title("Max Drawdown Distribution")
+            axes[2].set_xlabel("Drawdown (%)")
+            plt.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        # Page 4: Strategy Comparison
+        all_strategies = [("Markowitz", opt_result)]
+        if bl_result:
+            all_strategies.append(("Black-Litterman", bl_result))
+        if hrp_result:
+            all_strategies.append(("HRP", hrp_result))
+        all_strategies.append(("Min Variance", min_var_result))
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        names_s = [s[0] for s in all_strategies]
+        returns_s = [s[1]["return"] for s in all_strategies]
+        vol_s = [s[1]["volatility"] for s in all_strategies]
+        sharpe_s = [s[1]["sharpe"] for s in all_strategies]
+
+        x = np.arange(len(names_s))
+        width = 0.25
+        ax.bar(x - width, [r * 100 for r in returns_s], width, label="Return (%)", color="steelblue")
+        ax.bar(x, [v * 100 for v in vol_s], width, label="Volatility (%)", color="orange")
+        ax.bar(x + width, sharpe_s, width, label="Sharpe", color="green")
+        ax.set_xticks(x)
+        ax.set_xticklabels(names_s)
+        ax.set_title("Strategy Comparison")
+        ax.legend()
+        plt.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # Page 5: Stress Test
+        if stress_results:
+            from .stress_test import stress_results_to_dataframe
+            stress_df = stress_results_to_dataframe(stress_results)
+            fig, ax = plt.subplots(figsize=(12, 4))
+            ax.axis("off")
+            ax.set_title("Stress Test Results", fontsize=14, fontweight="bold")
+            table = ax.table(
+                cellText=stress_df.values,
+                colLabels=stress_df.columns,
+                loc="center",
+                cellLoc="center",
+            )
+            table.auto_set_font_size(False)
+            table.set_fontsize(8)
+            table.scale(1.0, 1.5)
+            plt.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+    logger.info("PDF report saved: %s", filepath)
     return filepath

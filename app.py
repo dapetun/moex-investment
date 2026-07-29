@@ -7,8 +7,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import matplotlib.pyplot as plt
-import networkx as nx
-import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -16,13 +14,13 @@ from moex_portfolio.analytics import (
     cvar_historical,
     equity_curve,
     monte_carlo_simulation,
+    rolling_correlation,
     var_historical,
 )
 from moex_portfolio.black_litterman import (
     create_views_from_correlation,
     optimize_black_litterman,
 )
-from moex_portfolio.hrp import optimize_hrp
 from moex_portfolio.charts import (
     plot_efficient_frontier_plotly,
     plot_equity_curve_plotly,
@@ -33,22 +31,33 @@ from moex_portfolio.charts import (
 from moex_portfolio.config import (
     CORR_THRESHOLD,
     MAX_WEIGHT,
-    MIN_OBSERVATIONS,
-    MIN_TURNOVER,
-    MIN_WEIGHT,
-    RISK_FREE_RATE,
-    REBALANCE_FREQ_DAYS,
-    TRANSACTION_COST_BPS,
     MIN_DRIFT,
+    MIN_TURNOVER,
+    REBALANCE_FREQ_DAYS,
+    RISK_FREE_RATE,
+    TRANSACTION_COST_BPS,
 )
-from moex_portfolio.correlation import compute_correlation_matrix, plot_correlation_heatmap
+from moex_portfolio.correlation import (
+    compute_correlation_matrix,
+)
 from moex_portfolio.data_loader import get_all_shares, load_all_data
-from moex_portfolio.exporter import export_portfolio_to_excel
+from moex_portfolio.exporter import export_portfolio_to_excel, export_portfolio_to_pdf
 from moex_portfolio.filters import prepare_returns
 from moex_portfolio.graph_analysis import build_correlation_graph, find_max_clique
+from moex_portfolio.hrp import optimize_hrp
 from moex_portfolio.metrics import portfolio_metrics
-from moex_portfolio.optimizer import efficient_frontier, max_sharpe_portfolio, min_variance_portfolio
-from moex_portfolio.rebalancing import RebalanceConfig, compare_strategies, simulate_rebalancing, simulate_buy_and_hold
+from moex_portfolio.optimizer import (
+    efficient_frontier,
+    max_sharpe_portfolio,
+    min_variance_portfolio,
+)
+from moex_portfolio.profiles import list_profiles, load_profile, save_profile
+from moex_portfolio.rebalancing import (
+    RebalanceConfig,
+    compare_strategies,
+    simulate_buy_and_hold,
+    simulate_rebalancing,
+)
 from moex_portfolio.risk_models import covariance_matrix
 from moex_portfolio.stress_test import run_all_scenarios, stress_results_to_dataframe
 from moex_portfolio.visualization import (
@@ -140,6 +149,7 @@ if st.sidebar.button("Run Optimization", type="primary"):
     st.success(f"Found clique with {len(clique)} stocks: {', '.join(clique)}")
 
     clique_returns = returns[clique]
+    market_returns = returns.mean(axis=1)
     mean_ret = clique_returns.mean()
     cov = covariance_matrix(clique_returns, method=cov_method)
 
@@ -169,8 +179,8 @@ if st.sidebar.button("Run Optimization", type="primary"):
     hrp_result = optimize_hrp(clique_returns, max_weight=max_weight)
 
     # ─── Tabs ─────────────────────────────────────────────────────
-    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress, tab_bl, tab_hrp = st.tabs(
-        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test", "Black-Litterman", "HRP"]
+    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress, tab_bl, tab_hrp, tab_rolling = st.tabs(
+        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test", "Black-Litterman", "HRP", "Rolling Correlation"]
     )
 
     with tab_overview:
@@ -366,7 +376,21 @@ if st.sidebar.button("Run Optimization", type="primary"):
         })
         st.dataframe(strat_comp, use_container_width=True)
 
-    # ─── Excel Export ──────────────────────────────────────────────
+    with tab_rolling:
+        st.subheader("Rolling Correlation Analysis")
+        roll_window = st.slider("Rolling window (days)", 20, 120, 60, 5, key="roll_window")
+        roll_corr = rolling_correlation(returns[clique], window=roll_window)
+
+        st.info(f"{len(roll_corr)} pairs, window={roll_window} days")
+        roll_df = pd.DataFrame(roll_corr)
+        st.line_chart(roll_df, height=400)
+
+        st.subheader("Rolling Beta")
+        from moex_portfolio.analytics import rolling_beta as rb
+        roll_beta_df = rb(returns[clique], market_returns, window=roll_window)
+        st.line_chart(roll_beta_df, height=400)
+
+    # ─── Export ──────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Export Results")
 
@@ -383,29 +407,75 @@ if st.sidebar.button("Run Optimization", type="primary"):
         "transaction_cost_bps": transaction_cost_bps,
     }
 
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
+    col_exp1, col_exp2 = st.columns(2)
 
-    export_path = export_portfolio_to_excel(
-        tmp_path, clique, opt_result, min_var_result,
-        mc_results=mc_results, returns=returns,
-        metrics=metrics, params=params,
-        rebalance_result=rebal_result,
-        stress_results=stress_results,
-        buy_hold_result=bh_result,
-        bl_result=bl_result,
-        hrp_result=hrp_result,
-    )
-
-    with open(export_path, "rb") as f:
-        st.download_button(
-            label="Download Excel Report",
-            data=f.read(),
-            file_name="portfolio_report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    with col_exp1:
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        export_path = export_portfolio_to_excel(
+            tmp_path, clique, opt_result, min_var_result,
+            mc_results=mc_results, returns=returns,
+            metrics=metrics, params=params,
+            rebalance_result=rebal_result,
+            stress_results=stress_results,
+            buy_hold_result=bh_result,
+            bl_result=bl_result,
+            hrp_result=hrp_result,
         )
+        with open(export_path, "rb") as f:
+            st.download_button(
+                label="Download Excel Report",
+                data=f.read(),
+                file_name="portfolio_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        export_path.unlink(missing_ok=True)
 
-    export_path.unlink(missing_ok=True)
+    with col_exp2:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_pdf = Path(tmp.name)
+        pdf_path = export_portfolio_to_pdf(
+            tmp_pdf, clique, opt_result, min_var_result,
+            metrics=metrics, params=params,
+            stress_results=stress_results,
+            bl_result=bl_result, hrp_result=hrp_result,
+            mc_results=mc_results,
+        )
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                label="Download PDF Report",
+                data=f.read(),
+                file_name="portfolio_report.pdf",
+                mime="application/pdf",
+            )
+        pdf_path.unlink(missing_ok=True)
+
+    # ─── Profile Save/Load ──────────────────────────────────
+    st.markdown("---")
+    st.subheader("Portfolio Profiles")
+
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        profile_name = st.text_input("Profile name", value="my_portfolio")
+        if st.button("Save Profile"):
+            save_profile(
+                name=profile_name,
+                clique=clique,
+                weights={t: float(w) for t, w in zip(clique, opt_result["weights"])},
+                metrics=metrics,
+                params=params,
+            )
+            st.success(f"Profile '{profile_name}' saved!")
+
+    with col_p2:
+        saved_profiles = list_profiles()
+        if saved_profiles:
+            selected_profile = st.selectbox("Load profile", saved_profiles)
+            if st.button("Load Profile"):
+                loaded = load_profile(selected_profile)
+                st.json(loaded)
+        else:
+            st.info("No saved profiles yet.")
 
 else:
     st.info("Configure parameters in the sidebar and click **Run Optimization** to start.")
