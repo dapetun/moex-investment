@@ -23,7 +23,7 @@
 ## Установка
 
 ### Требования
-- Python 3.11 или выше
+- Python 3.10 или выше
 
 ### Шаг 1: Клонируем репозиторий
 
@@ -35,7 +35,7 @@ cd moex-investment
 ### Шаг 2: Устанавливаем зависимости
 
 ```bash
-pip install -e .
+pip install -e ".[dashboard,dev]"
 ```
 
 ### Шаг 3: Запускаем дашборд
@@ -77,78 +77,36 @@ streamlit run app.py
 
 ## 20 вкладок с результатами
 
-### Вкладка 1: Portfolio (Главная)
-Оптимальный портфель с максимальным Sharpe ratio. График весов, метрики, кривая капитала, Min Variance альтернатива.
-
-### Вкладка 2: Efficient Frontier
-График всех «оптимальных» портфелей — от минимально рискового до максимально доходного.
-
-### Вкладка 3: Monte Carlo
-10 000 случайных сценариев развития портфеля на год вперёд. Гистограммы, таблица процентилей.
-
-### Вкладка 4: Graph Analysis
-Визуализация графа корреляций: полный граф, клика, тепловая карта.
-
-### Вкладка 5: Detailed Analysis
-Бар-чарт доходностей, таблица статистики по каждой акции.
-
-### Вкладка 6: Rebalancing
-Сравнение Rebalancing vs Buy & Hold с учётом транзакционных издержек.
-
-### Вкладка 7: Stress Test
-5 исторических кризисов: COVID, 2022, 2018, 2014, 2008.
-
-### Вкладка 8: Black-Litterman
-Комбинирование рыночного равновесия с вашими views.
-
-### Вкладка 9: HRP
-Иерархический риск-паритет (Lopez de Prado, 2016).
-
-### Вкладка 10: Rolling Correlation
-Как корреляции и бета меняются со временем.
-
-### Вкладка 11: Dividends
-Стратегии: Dogs of the Dow, Dividend Aristocrats, High Dividend Yield.
-
-### Вкладка 12: Fundamental
-Фундаментальный анализ: P/E, P/B, ROE, ранжирование по составному скору.
-
-### Вкладка 13: Bonds
-Кривая доходности ОФЗ, интерполяция, анализ термической структуры.
-
-### Вкладка 14: Merton Model
-Структурная модель кредитного риска: DD, PD, credit spread.
-
-### Вкладка 15: Backtesting
-Walk-forward бэктестинг vs Buy & Hold.
-
-### Вкладка 16: Risk Budget
-Вклад каждой акции в общий риск. Equal Risk Contribution.
-
-### Вкладка 17: Drawdowns
-Анализ всех просадок, underwater-чарт, худшие периоды.
-
-### Вкладка 18: Multi-Asset
-Мульти-активная оптимизация: акции + ОФЗ в одном портфеле.
-
-### Вкладка 19: Benchmark
-Сравнение с IMOEX/RGBI: tracking error, alpha, information ratio.
-
-### Вкладка 20: ML Forecast
-Прогнозирование доходности: Walk-Forward, инкрементальное дообучение (SGD/PA), сравнение моделей.
+| # | Вкладка | Описание |
+|---|---------|----------|
+| 1 | Portfolio | Оптимальный портфель с максимальным Sharpe ratio, веса, метрики, кривая капитала |
+| 2 | Efficient Frontier | График «оптимальных» портфелей — от минимально рискового до максимально доходного |
+| 3 | Monte Carlo | 10 000 случайных сценариев на год вперёд, гистограммы, процентили |
+| 4 | Graph Analysis | Визуализация графа корреляций: полный граф, клика, тепловая карта |
+| 5 | Detailed Analysis | Бар-чарт доходностей, таблица статистики по каждой акции |
+| 6 | Rebalancing | Сравнение Rebalancing vs Buy & Hold с учётом транзакционных издержек |
+| 7 | Stress Test | 5 исторических кризисов: COVID, 2022, 2018, 2014, 2008 |
+| 8 | Black-Litterman | Комбинирование рыночного равновесия с вашими views |
+| 9 | HRP | Иерархический риск-паритет (Lopez de Prado, 2016) |
+| 10 | Rolling Correlation | Как корреляции и бета меняются со временем |
+| 11 | Dividends | Dogs of the Dow, Dividend Aristocrats, High Dividend Yield |
+| 12 | Fundamental | P/E, P/B, ROE, ранжирование по составному скору |
+| 13 | Bonds | Кривая доходности ОФЗ, интерполяция, анализ термической структуры |
+| 14 | Merton Model | Структурная модель кредитного риска: DD, PD, credit spread |
+| 15 | Backtesting | Walk-forward бэктестинг vs Buy & Hold |
+| 16 | Risk Budget | Вклад каждой акции в общий риск. Equal Risk Contribution |
+| 17 | Drawdowns | Анализ всех просадок, underwater-чарт, худшие периоды |
+| 18 | Multi-Asset | Мульти-активная оптимизация: акции + ОФЗ в одном портфеле |
+| 19 | Benchmark | Сравнение с IMOEX/RGBI: tracking error, alpha, information ratio |
+| 20 | ML Forecast | Walk-Forward, инкрементальное дообучение (SGD/PA), сравнение моделей |
 
 ---
 
 ## Экспорт результатов
 
-### Excel-отчёт (10 листов)
-Max Sharpe Portfolio, Min Variance, Summary, Monte Carlo, Parameters, Returns, Rebalancing, Stress Test, Black-Litterman, HRP.
-
-### PDF-отчёт (5 страниц)
-Сводка с метриками, веса портфеля, гистограммы MC, сравнение стратегий, стресс-тесты.
-
-### Сохранение профилей
-JSON-файлы в `data/profiles/`.
+- **Excel** (10 листов): Max Sharpe Portfolio, Min Variance, Summary, Monte Carlo, Parameters, Returns, Rebalancing, Stress Test, Black-Litterman, HRP
+- **PDF** (5 страниц): Сводка с метриками, веса портфеля, гистограммы MC, сравнение стратегий, стресс-тесты
+- **Профили**: JSON-файлы в `data/profiles/`
 
 ---
 
@@ -196,7 +154,7 @@ src/moex_portfolio/
 ├── ml_models.py           — ML: Ridge/Lasso/RF/GBR/SGD/PA, Walk-Forward, AutoML, incremental
 ├── exporter.py            — Экспорт в Excel и PDF
 ├── profiles.py            — Сохранение/загрузка профилей (JSON)
-├── i18n.py                — Интернационализация (RU/EN, 150+ строк)
+├── i18n.py                — Интернационализация (RU/EN, 328 ключей)
 └── glossary.py            — Глоссарий финансовых терминов (30+)
 ```
 
@@ -215,32 +173,70 @@ python -m pytest tests/test_optimizer.py -v
 python -m pytest tests/ --cov=moex_portfolio --cov-report=term-missing
 ```
 
-**201 тест**, покрывающих:
-- Фильтрацию данных
-- Метрики портфеля (включая Treynor, Modigliani)
-- Оптимизатор (Markowitz, секторы)
-- Риск-модели (Ledoit-Wolf, EWMA, Beta)
-- Аналитику (Monte Carlo, VaR, CVaR, equity curve)
-- Графики Plotly
-- Экспорт Excel/PDF
-- Ребалансирование
-- Стресс-тестирование
-- Black-Litterman
-- HRP
-- Мульти-активную оптимизацию
-- Бэктестинг
-- Риск-бюджет
-- Анализ просадок
-- Облигации (YTM, Duration, Convexity)
-- Кривую доходности
-- Модель Мертона
-- Бенчмарк
-- Фундаментальный анализ
-- Дивидендные стратегии
-- ML-модели и инкрементальное обучение
-- Автодефолты, кэширование
-- Профили
-- i18n и глоссарий
+**201 тест**, покрывающих все основные модули проекта.
+
+---
+
+## Известные проблемы и план исправлений
+
+Проект был подвергнут комплексному аудиту. Ниже — список выявленных проблем и план их устранения.
+
+### Критические проблемы (Этап 1)
+
+| # | Проблема | Файл | Статус |
+|---|----------|------|--------|
+| 1 | `app.py` — монолитный файл (1321 строка), нарушение SRP | `app.py` | Будет разделён |
+| 2 | `sys.path.insert()` — хрупкий путь импорта | `app.py` | Заменён на `pip install -e .` |
+| 3 | `TODAY = date.today()` вычисляется при import time | `config.py` | Будет исправлено |
+| 4 | Division by zero в Black-Litterman при сингулярных данных | `black_litterman.py` | Будет исправлено |
+| 5 | Голые `except` блокируют ошибки | `data_loader.py`, `ml_models.py` | Будут заменены |
+| 6 | `time.sleep()` блокирует UI | `app.py` | Заменено на async patterns |
+| 7 | Отсутствует rate limiting для API | `data_loader.py` | Будет добавлен |
+
+### Проблемы качества (Этап 2)
+
+| # | Проблема | Файл |
+|---|----------|------|
+| 8 | Отсутствие type hints в ~60% функций | Все модули |
+| 9 | Нет валидации API ответов | `data_loader.py` |
+| 10 | `ml_models.py` — 901 строка, нужен разделение | `ml_models.py` |
+| 11 | Нет кэширования ML моделей | `ml_models.py` |
+| 12 | Pickle для моделей (риск RCE) | `ml_models.py` |
+| 13 | XSS через `unsafe_allow_html` | `app.py` |
+| 14 | Отсутствует Dependency Injection | `config.py` |
+| 15 | Coverage threshold — 60% | `pyproject.toml` |
+| 16 | Нет structured logging | Все модули |
+| 17 | Дублирование `requirements.txt` / `pyproject.toml` | Корень проекта |
+| 18 | Нет CI coverage/security reporting | `.github/workflows/ci.yml` |
+
+### Проблемы производительности (Этап 3)
+
+| # | Проблема | Файл |
+|---|----------|------|
+| 19 | Избыточные копирования DataFrame | Несколько модулей |
+| 20 | Нет lazy loading для данных | `data_loader.py` |
+| 21 | Нет batch loading для API | `data_loader.py` |
+| 22 | Matplotlib figure не закрывается | `visualization.py` |
+| 23 | Отсутствует параллелизм в загрузке | `data_loader.py` |
+
+---
+
+## Дорожная карта
+
+### Этап 1 — Критические исправления
+Исправление проблем, мешающих корректной и безопасной работе.
+
+### Этап 2 — Улучшение качества
+Type safety, dependency injection, структурирование кода, покрытие тестами.
+
+### Этап 3 — Оптимизация
+Производительность, кэширование, structured logging, Docker.
+
+### Этап 4 — Новые возможности
+REST API, real-time tracking, алерты, mobile UI.
+
+### Этап 5 — Долгосрочное развитие
+Tax optimization, Kubernetes, GraphQL, enterprise-ready.
 
 ---
 
