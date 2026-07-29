@@ -82,28 +82,24 @@ def fetch_cbr_key_rate() -> float | None:
 
 
 def _fetch_cbr_key_rate_fallback() -> float | None:
-    """Fallback: ключевая ставка через JSON API ЦБ."""
-    url = "https://www.cbr.ru/scripts/XML_daily.asp"
-    params = {"date_req": pd.Timestamp.now().strftime("%d/%m/%Y")}
-
+    """Fallback: ключевая ставка через HTML-таблицу ЦБ."""
+    url = "https://www.cbr.ru/hd_base/KeyRate/"
     try:
-        resp = requests.get(url, params=params, timeout=15)
+        resp = requests.get(url, timeout=15)
         resp.raise_for_status()
 
         import xml.etree.ElementTree as ET
         root = ET.fromstring(resp.text)
 
-        # Ищем USD — как индикатор, но ключевая ставка отдельно
-        # Пробуем получить из krestref
-        url2 = "https://www.cbr.ru/scripts/XML_key.asp"
-        resp2 = requests.get(url2, params={"date_req": pd.Timestamp.now().strftime("%d/%m/%Y")}, timeout=15)
-        root2 = ET.fromstring(resp2.text)
-
-        for elem in root2.findall(".//record"):
-            name = elem.find("name")
-            val = elem.find("value")
-            if name is not None and val is not None and "ключев" in (name.text or "").lower():
-                return float(val.text.replace(",", "."))
+        # Ищем таблицу с ключевыми ставками
+        for table in root.findall(".//table"):
+            rows = table.findall(".//tr")
+            for row in rows:
+                cells = row.findall(".//td")
+                if len(cells) >= 2:
+                    val_text = cells[1].text
+                    if val_text:
+                        return float(val_text.replace(",", ".").strip())
 
     except Exception as e:
         logger.debug("CBR fallback failed: %s", e)
