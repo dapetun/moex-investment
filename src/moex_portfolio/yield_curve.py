@@ -61,7 +61,8 @@ def build_yield_curve(
                 "yield_pct": yield_pct,
                 "maturity_date": mat_date,
             })
-        except Exception:
+        except (ValueError, KeyError, TypeError) as e:
+            logger.debug("Failed to parse yield for %s: %s", ticker, e)
             continue
 
     if not records:

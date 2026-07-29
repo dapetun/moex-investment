@@ -29,6 +29,18 @@ def implied_returns(
         Вектор имплицированных дневных доходностей.
     """
     sigma = cov_matrix.values
+
+    # Ridge regularization: если матрица сингулярна или близка к сингулярной,
+    # добавляем малый диагональный шум для численной стабильности
+    cond = np.linalg.cond(sigma)
+    if cond > 1e10:
+        ridge = 1e-6 * np.eye(sigma.shape[0])
+        sigma = sigma + ridge
+        logger.warning(
+            "Covariance matrix ill-conditioned (cond=%.1e), applying ridge=%.1e",
+            cond, 1e-6,
+        )
+
     pi = risk_aversion * sigma @ market_weights
     return pi
 
@@ -71,17 +83,34 @@ def black_litterman_returns(
 
     tau_sigma = tau * sigma
 
+    # Ridge regularization для tau_sigma
+    n = tau_sigma.shape[0]
+    cond_tau = np.linalg.cond(tau_sigma)
+    if cond_tau > 1e10:
+        tau_sigma = tau_sigma + 1e-8 * np.eye(n)
+        logger.warning("tau_sigma ill-conditioned (cond=%.1e), ridge applied", cond_tau)
+
     # Если omega не задана, вычисляем из tau * P Σ P'
     if omega is None:
         omega = np.diag(np.diag(P @ tau_sigma @ P.T))
 
-    # Дисперсия view: если Omega = 0, views are certain
+    # Ridge regularization для omega
+    diag_omega = np.diag(omega).copy()
+    diag_omega[diag_omega < 1e-12] = 1e-12
+    omega = np.diag(diag_omega)
+
     omega_inv = np.linalg.inv(omega)
 
     tau_sigma_inv = np.linalg.inv(tau_sigma)
 
     # A = (τΣ)^-1 + P' Ω^-1 P
     A = tau_sigma_inv + P.T @ omega_inv @ P
+
+    # Ridge regularization для A
+    cond_A = np.linalg.cond(A)
+    if cond_A > 1e10:
+        A = A + 1e-8 * np.eye(n)
+        logger.warning("BL matrix A ill-conditioned (cond=%.1e), ridge applied", cond_A)
 
     # b = (τΣ)^-1 π + P' Ω^-1 Q
     b = tau_sigma_inv @ pi + P.T @ omega_inv @ Q

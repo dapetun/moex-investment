@@ -189,7 +189,8 @@ def get_coupon_info(ticker: str, delay: float = REQUEST_DELAY) -> dict:
 
         return {}
 
-    except Exception:
+    except (requests.RequestException, ValueError) as e:
+        logger.warning("Bond data fetch error: %s", e)
         return {}
 
 

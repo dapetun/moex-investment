@@ -392,9 +392,10 @@ async def _fetch_ticker_async(
                 async with session.get(url, params=params, timeout=15) as response:
                     data = await response.json()
                     break
-            except Exception:
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
                 retries += 1
                 wait = RETRY_BACKOFF ** retries
+                logger.debug("%s — request error (attempt %d/%d): %s", ticker, retries, MAX_RETRIES, e)
                 await asyncio.sleep(wait)
         else:
             return None
@@ -621,8 +622,8 @@ def check_cache_freshness(
         result["rows"] = len(full_df)
         if len(full_df) > 0:
             result["last_data_date"] = str(full_df.index[-1])
-    except Exception:
-        pass
+    except (pd.errors.ParserError, OSError, ValueError) as e:
+        logger.warning("Failed to read cache metadata: %s", e)
 
     return result
 

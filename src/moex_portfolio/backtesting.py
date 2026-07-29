@@ -92,7 +92,8 @@ def walk_forward_backtest(
                     max_weight=max_weight,
                 )
             new_weights = result["weights"]
-        except Exception:
+        except (np.linalg.LinAlgError, ValueError) as e:
+            logger.warning("Optimization failed at step %d: %s, keeping current weights", i, e)
             new_weights = current_weights
 
         turnover = float(np.sum(np.abs(new_weights - current_weights)))

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, prod]
   pull_request:
-    branches: [main]
+    branches: [main, prod]
 
 jobs:
   test:
@@ -29,13 +29,29 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install -e .
+          pip install -e ".[dev]"
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          python -m pytest tests/ -v --tb=long
+          python -m pytest tests/ -v --tb=long --cov=moex_portfolio --cov-report=term-missing --cov-fail-under=80
 
       - name: Lint check
         run: |
           pip install ruff
           ruff check src/ tests/
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Run bandit security scan
+        run: bandit -r src/ -c pyproject.toml

@@ -53,8 +53,8 @@ def get_fundamental_data(tickers: list[str], delay: float = REQUEST_DELAY) -> pd
                     "issuecapitalization": _safe_float(info.get("ISSUECAPITALIZATION", "")),
                 })
             time.sleep(delay)
-        except Exception:
-            logger.warning("Failed to fetch fundamental data for %s", ticker)
+        except (requests.RequestException, ValueError, KeyError) as e:
+            logger.warning("Failed to fetch fundamental data for %s: %s", ticker, e)
             continue
 
     return pd.DataFrame(records)

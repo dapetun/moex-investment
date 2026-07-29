@@ -91,8 +91,8 @@ def get_index_history(
         logger.info("Index %s: %d days loaded", index_ticker, len(returns))
         return returns
 
-    except Exception:
-        logger.warning("Index fetch error for %s", index_ticker, exc_info=True)
+    except (requests.RequestException, ValueError, KeyError) as e:
+        logger.warning("Index fetch error for %s: %s", index_ticker, e)
         return pd.Series(dtype=float)
 
 
