@@ -17,6 +17,11 @@ from moex_portfolio.analytics import (
     rolling_correlation,
     var_historical,
 )
+from moex_portfolio.backtesting import (
+    buy_and_hold_backtest,
+    compare_backtests,
+    walk_forward_backtest,
+)
 from moex_portfolio.black_litterman import (
     create_views_from_correlation,
     optimize_black_litterman,
@@ -51,6 +56,7 @@ from moex_portfolio.dividend_strategies import (
     dogs_of_the_dow,
     high_dividend_yield,
 )
+from moex_portfolio.drawdown_analysis import analyze_drawdowns, drawdown_summary_table
 from moex_portfolio.exporter import export_portfolio_to_excel, export_portfolio_to_pdf
 from moex_portfolio.filters import prepare_returns
 from moex_portfolio.fundamental import (
@@ -72,6 +78,11 @@ from moex_portfolio.rebalancing import (
     compare_strategies,
     simulate_buy_and_hold,
     simulate_rebalancing,
+)
+from moex_portfolio.risk_budget import (
+    compute_risk_budget,
+    equal_risk_contribution,
+    risk_budget_summary,
 )
 from moex_portfolio.risk_models import covariance_matrix
 from moex_portfolio.stress_test import run_all_scenarios, stress_results_to_dataframe
@@ -199,8 +210,8 @@ if st.sidebar.button("Run Optimization", type="primary"):
     hrp_result = optimize_hrp(clique_returns, max_weight=max_weight)
 
     # ─── Tabs ─────────────────────────────────────────────────────
-    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress, tab_bl, tab_hrp, tab_rolling, tab_dividends, tab_fundamental, tab_bonds, tab_merton = st.tabs(
-        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test", "Black-Litterman", "HRP", "Rolling Correlation", "Dividends", "Fundamental", "Bonds", "Merton Model"]
+    tab_overview, tab_frontier, tab_mc, tab_graphs, tab_analysis, tab_rebal, tab_stress, tab_bl, tab_hrp, tab_rolling, tab_dividends, tab_fundamental, tab_bonds, tab_merton, tab_backtest, tab_risk_budget, tab_drawdowns = st.tabs(
+        ["Portfolio", "Efficient Frontier", "Monte Carlo", "Graph Analysis", "Detailed Analysis", "Rebalancing", "Stress Test", "Black-Litterman", "HRP", "Rolling Correlation", "Dividends", "Fundamental", "Bonds", "Merton Model", "Backtesting", "Risk Budget", "Drawdowns"]
     )
 
     with tab_overview:
@@ -562,6 +573,120 @@ if st.sidebar.button("Run Optimization", type="primary"):
             col8.metric("Model Equity", f"{result['equity_value_model']:.1f} M")
 
             st.json(result)
+
+    with tab_backtest:
+        st.subheader("Walk-Forward Backtesting")
+        st.markdown("Re-optimizes portfolio periodically and evaluates out-of-sample performance.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            lookback = st.number_input("Lookback window (days)", 63, 504, 252, 21, key="bt_lookback")
+        with col2:
+            bt_rebal_freq = st.number_input("Rebalance frequency (days)", 5, 63, 21, 5, key="bt_rebal")
+
+        bt_opt = st.selectbox("Optimizer", ["max_sharpe", "min_variance"], key="bt_opt")
+
+        if st.button("Run Backtest", key="run_bt"):
+            with st.spinner("Running walk-forward backtest..."):
+                bt_result = walk_forward_backtest(
+                    clique_returns, lookback_days=lookback,
+                    rebalance_freq_days=bt_rebal_freq, optimizer=bt_opt,
+                    max_weight=max_weight, risk_free_rate=risk_free,
+                )
+                bh = buy_and_hold_backtest(clique_returns, opt_result["weights"])
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Total Return", f"{bt_result.total_return:.2%}")
+            col2.metric("Annual Return", f"{bt_result.annual_return:.2%}")
+            col3.metric("Sharpe", f"{bt_result.sharpe:.3f}")
+            col4.metric("Max Drawdown", f"{bt_result.max_drawdown_val:.2%}")
+
+            col5, col6, col7, col8 = st.columns(4)
+            col5.metric("Rebalances", str(bt_result.n_rebalances))
+            col6.metric("Avg Turnover", f"{bt_result.turnover_per_rebal:.3f}")
+            col7.metric("B&H Return", f"{bh.total_return:.2%}")
+            col8.metric("B&H Sharpe", f"{bh.sharpe:.3f}")
+
+            st.subheader("Portfolio Growth")
+            bt_chart = pd.DataFrame({
+                "Walk-Forward": bt_result.portfolio_values[:len(bh.portfolio_values)],
+                "Buy & Hold": bh.portfolio_values[:len(bt_result.portfolio_values)],
+            })
+            st.line_chart(bt_chart)
+
+            comp = compare_backtests([bt_result, bh])
+            st.subheader("Comparison Table")
+            st.dataframe(comp.style.format({
+                "Total Return": "{:.2%}", "Annual Return": "{:.2%}",
+                "Annual Volatility": "{:.2%}", "Sharpe": "{:.3f}",
+                "Max Drawdown": "{:.2%}", "Avg Turnover": "{:.4f}",
+            }), use_container_width=True)
+
+    with tab_risk_budget:
+        st.subheader("Risk Budgeting")
+        st.markdown("Which assets contribute most to portfolio risk?")
+
+        rb_result = compute_risk_budget(opt_result["weights"], cov)
+        rb_df = risk_budget_summary(rb_result)
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Portfolio Volatility", f"{rb_result.portfolio_volatility:.2%}")
+        col2.metric("Max Risk Contributor", rb_df.iloc[0]["Ticker"])
+        col3.metric("Max Risk %", f"{rb_df.iloc[0]['Risk Contribution %']:.1%}")
+
+        st.plotly_chart(plot_weights_bar_plotly(
+            rb_df["Ticker"].tolist(), rb_df["Risk Contribution %"].values,
+            title="Risk Contribution by Asset",
+        ), use_container_width=True)
+
+        st.dataframe(rb_df.style.format({
+            "Weight": "{:.2%}", "Marginal Risk": "{:.4f}",
+            "Component Risk": "{:.6f}", "Risk Contribution %": "{:.1%}",
+            "Risk/Return Ratio": "{:.4f}",
+        }), use_container_width=True)
+
+        st.subheader("Equal Risk Contribution (ERC)")
+        erc_weights = equal_risk_contribution(cov)
+        erc_result = compute_risk_budget(erc_weights, cov)
+        erc_df = risk_budget_summary(erc_result)
+
+        st.plotly_chart(plot_weights_bar_plotly(
+            clique, erc_weights, title="ERC Weights",
+        ), use_container_width=True)
+
+        st.dataframe(erc_df.style.format({
+            "Weight": "{:.2%}", "Risk Contribution %": "{:.1%}",
+        }), use_container_width=True)
+
+    with tab_drawdowns:
+        st.subheader("Drawdown Analysis")
+        st.markdown("Detailed analysis of portfolio drawdowns — worst periods, recovery times.")
+
+        eq_series = equity_curve(clique_returns, opt_result["weights"])
+        dd_result = analyze_drawdowns(eq_series)
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Max Drawdown", f"{dd_result.max_drawdown:.2%}")
+        col2.metric("Avg Drawdown", f"{dd_result.avg_drawdown:.2%}")
+        col3.metric("Avg Recovery (days)", f"{dd_result.avg_recovery:.0f}")
+        col4.metric("Drawdown Periods", str(dd_result.n_drawdowns))
+
+        if dd_result.worst_drawdown:
+            st.subheader("Worst Drawdown")
+            wd = dd_result.worst_drawdown
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Peak Date", wd.peak_date)
+            c2.metric("Trough Date", wd.trough_date)
+            c3.metric("Drawdown", f"{wd.drawdown_pct:.2%}")
+            c4.metric("Recovery", wd.recovery_date or "Not recovered")
+
+        st.subheader("Underwater Chart")
+        st.line_chart(dd_result.underwater_series)
+
+        if dd_result.drawdown_periods:
+            st.subheader("Top Drawdown Periods")
+            dd_table = drawdown_summary_table(dd_result, top_n=10)
+            st.dataframe(dd_table.style.format({"Drawdown": "{:.2%}"}), use_container_width=True)
 
     # ─── Export ──────────────────────────────────────────────
     st.markdown("---")
