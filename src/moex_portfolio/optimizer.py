@@ -165,7 +165,7 @@ def max_sharpe_with_sectors(
     constraints = _make_constraints(n)
 
     # Секторальные ограничения
-    sectors = sorted(set(sector_map.get(t, "Unknown") for t in tickers))
+    sectors = sorted({sector_map.get(t, "Unknown") for t in tickers})
     for sector in sectors:
         sector_indices = [i for i, t in enumerate(tickers) if sector_map.get(t, "Unknown") == sector]
         if len(sector_indices) > 0:

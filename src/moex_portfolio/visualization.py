@@ -8,8 +8,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from .config import FIGURES_DIR
-
 logger = logging.getLogger(__name__)
 
 

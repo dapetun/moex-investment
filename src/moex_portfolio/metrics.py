@@ -187,7 +187,7 @@ def portfolio_metrics(
         port_daily = returns.values @ weights
         result["max_drawdown"] = max_drawdown(pd.Series(port_daily))
 
-        eq = equity_curve_data = (1 + pd.Series(port_daily)).cumprod()
+        eq = (1 + pd.Series(port_daily)).cumprod()
         result["calmar"] = calmar_ratio(eq)
     else:
         result["sortino"] = None

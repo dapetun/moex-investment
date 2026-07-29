@@ -6,8 +6,6 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from .metrics import max_drawdown
-
 logger = logging.getLogger(__name__)
 
 

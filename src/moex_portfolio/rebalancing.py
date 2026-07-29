@@ -1,15 +1,13 @@
 """Симуляция ребалансирования портфеля с учётом транзакционных издержек."""
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
 from .config import MAX_WEIGHT, MIN_WEIGHT
-from .metrics import max_drawdown, sharpe_ratio
-from .optimizer import max_sharpe_portfolio
-from .risk_models import covariance_matrix
+from .metrics import max_drawdown
 
 logger = logging.getLogger(__name__)
 

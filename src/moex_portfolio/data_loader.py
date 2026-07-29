@@ -3,9 +3,7 @@
 import logging
 import time
 from datetime import date
-from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import requests
 from tqdm import tqdm
@@ -88,7 +86,7 @@ def get_price_history(
                 response = session.get(url, params=params, timeout=15)
                 data = response.json()
                 break
-            except (requests.ConnectionError, requests.Timeout) as e:
+            except (requests.ConnectionError, requests.Timeout):
                 retries += 1
                 wait = RETRY_BACKOFF ** retries
                 logger.warning(

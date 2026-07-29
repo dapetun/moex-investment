@@ -1,6 +1,6 @@
 """Параметры и конфигурация проекта."""
 
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 from dateutil.relativedelta import relativedelta

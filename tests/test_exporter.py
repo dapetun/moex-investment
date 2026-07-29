@@ -44,7 +44,7 @@ def sample_data():
 
 
 def test_export_basic(sample_data):
-    clique, opt, mv, returns, metrics, params = sample_data
+    clique, opt, mv, _returns, metrics, params = sample_data
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "portfolio.xlsx"
         result = export_portfolio_to_excel(

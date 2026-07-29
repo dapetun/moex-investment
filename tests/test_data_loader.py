@@ -3,9 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-import numpy as np
 import pandas as pd
-import pytest
 
 from moex_portfolio.data_loader import (
     _fetch_ticker_async,

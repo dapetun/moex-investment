@@ -173,7 +173,6 @@ def optimize_hrp(
 
     weights = hierarchical_risk_parity(returns)
     tickers = weights.index.tolist()
-    n = len(tickers)
     cov = returns.cov()
     mean_ret = returns.mean()
 

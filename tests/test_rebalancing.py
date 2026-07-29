@@ -23,7 +23,7 @@ def _sample_returns(n_days=252, n_stocks=5):
 def _equal_weights(n_stocks=5):
     """Равные веса."""
     tickers = [f"S{i}" for i in range(n_stocks)]
-    return {t: 1.0 / n_stocks for t in tickers}
+    return dict.fromkeys(tickers, 1.0 / n_stocks)
 
 
 def test_simulate_rebalancing():
