@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moex-portfolio"
-version = "0.1.0"
+version = "0.1.1"
 description = "MOEX portfolio optimizer: correlation graph, Markowitz, Black-Litterman, HRP, ML forecasting, multi-asset, bonds, stress testing"
 readme = "README.md"
 license = {text = "MIT"}
