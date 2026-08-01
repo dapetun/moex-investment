@@ -732,8 +732,8 @@ if st.sidebar.button(t("run_optimization", lang=lang), type="primary"):
             dy = get_dividend_yields(clique, all_prices)
 
         nonzero_dy = dy[dy > 0]
+        st.info(f"Checked {len(clique)} stocks — {len(nonzero_dy)} have dividends in last 365 days")
         if len(nonzero_dy) > 0:
-            st.info(f"Real dividend data loaded: {len(nonzero_dy)} of {len(clique)} stocks pay dividends")
             dy_display = pd.DataFrame({
                 "Ticker": nonzero_dy.index,
                 "Dividend Yield": nonzero_dy.values,
@@ -790,22 +790,32 @@ if st.sidebar.button(t("run_optimization", lang=lang), type="primary"):
         if "issuecapitalization" in merged.columns:
             display_cols.insert(0, "issuecapitalization")
         display_cols = [c for c in display_cols if c in merged.columns]
+
+        fmt_map = {}
+        for c in display_cols:
+            if c == "issuecapitalization":
+                fmt_map[c] = "{:,.0f}"
+            elif c in ("annual_return", "annual_volatility"):
+                fmt_map[c] = "{:.2%}"
+            else:
+                fmt_map[c] = "{:.3f}"
+
+        display_df = merged[display_cols].copy()
+        for c in display_cols:
+            display_df[c] = pd.to_numeric(display_df[c], errors="coerce")
+
         st.dataframe(
-            merged[display_cols].style.format({
-                "annual_return": "{:.2%}",
-                "annual_volatility": "{:.2%}",
-                "sharpe": "{:.3f}",
-                "skewness": "{:.3f}",
-                "kurtosis": "{:.3f}",
-                "issuecapitalization": "{:,.0f}",
-            }),
+            display_df.style.format(fmt_map, na_rep="-"),
             use_container_width=True,
         )
 
         st.subheader(t("fund_composite", lang=lang))
-        top_n_fund = st.slider(t("fund_top_n", lang=lang), 5, len(merged), min(10, len(merged)), key="top_n_fund")
-        top_stocks = merged.head(top_n_fund)
-        st.bar_chart(top_stocks["composite_score"])
+        if "composite_score" in merged.columns:
+            top_n_fund = st.slider(t("fund_top_n", lang=lang), 5, len(merged), min(10, len(merged)), key="top_n_fund")
+            top_stocks = merged.head(top_n_fund)
+            st.bar_chart(top_stocks["composite_score"])
+        else:
+            st.caption("Composite score not available (requires rank_stocks)")
 
     # ═══════════════════════════════════════════════════════
     # TAB 13: BONDS

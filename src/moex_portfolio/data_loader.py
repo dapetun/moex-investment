@@ -238,8 +238,7 @@ def get_dividend_yields(
 ) -> pd.Series:
     """Расчёт реальной дивидендной доходности по данным MOEX ISS.
 
-    Для каждого тикера загружает историю дивидендов через MOEX ISS API,
-    суммирует дивиденды за последние lookback_days дней и делит на текущую цену.
+    Параллельно загружает дивиденды для всех тикеров через aiohttp.
 
     Args:
         tickers: Список тикеров.
@@ -249,40 +248,77 @@ def get_dividend_yields(
     Returns:
         Series с дивидендной доходностью по каждому тикеру.
     """
+    import asyncio
+
+    import aiohttp
 
     now = pd.Timestamp.now()
     cutoff = now - timedelta(days=lookback_days)
-    yields = {}
+    valid_tickers = [t for t in tickers if t in prices.columns]
 
-    for ticker in tickers:
-        if ticker not in prices.columns:
-            yields[ticker] = 0.0
-            continue
-
+    async def _fetch_one(session: aiohttp.ClientSession, ticker: str) -> tuple[str, float]:
         current_price = prices[ticker].iloc[-1]
         if pd.isna(current_price) or current_price <= 0:
-            yields[ticker] = 0.0
-            continue
+            return ticker, 0.0
 
-        divs = get_dividends(ticker)
-        if divs is None or divs.empty:
-            yields[ticker] = 0.0
-            continue
+        url = f"{MOEX_ISS_BASE}/securities/{ticker}/dividends.json"
+        try:
+            async with session.get(url, params={"iss.meta": "off"}, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    return ticker, 0.0
+                data = await resp.json()
+        except Exception:
+            return ticker, 0.0
 
-        recent = divs[divs["registryclosedate"] >= cutoff]
+        divs_data = data.get("dividends", {}).get("data", [])
+        if not divs_data:
+            return ticker, 0.0
+
+        cols = data.get("dividends", {}).get("columns", [])
+        if "registryclosedate" not in cols or "value" not in cols:
+            return ticker, 0.0
+
+        df = pd.DataFrame(divs_data, columns=cols)
+        df["registryclosedate"] = pd.to_datetime(df["registryclosedate"], errors="coerce")
+        df = df.dropna(subset=["registryclosedate", "value"])
+        recent = df[df["registryclosedate"] >= cutoff]
         if recent.empty:
-            yields[ticker] = 0.0
-            continue
+            return ticker, 0.0
 
         total_divs = recent["value"].sum()
-        yields[ticker] = total_divs / current_price
+        dy = total_divs / current_price
+        return ticker, dy
 
-        logger.info(
-            "%s: dividend yield = %.2f%% (%.2f RUB / %.2f RUB)",
-            ticker, yields[ticker] * 100, total_divs, current_price,
-        )
+    async def _fetch_all() -> dict[str, float]:
+        sem = asyncio.Semaphore(10)
 
-    return pd.Series(yields)
+        async def _limited(session: aiohttp.ClientSession, ticker: str) -> tuple[str, float]:
+            async with sem:
+                return await _fetch_one(session, ticker)
+
+        async with aiohttp.ClientSession() as session:
+            tasks = [_limited(session, t) for t in valid_tickers]
+            results = await asyncio.gather(*tasks)
+        return dict(results)
+
+    try:
+        yields_dict = asyncio.run(_fetch_all())
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        yields_dict = loop.run_until_complete(_fetch_all())
+        loop.close()
+
+    for t in tickers:
+        if t not in yields_dict:
+            yields_dict[t] = 0.0
+
+    dy_series = pd.Series(yields_dict)
+    nonzero = (dy_series > 0).sum()
+    logger.info(
+        "Dividend yields: %d/%d stocks have positive yield",
+        nonzero, len(valid_tickers),
+    )
+    return dy_series
 
 
 def adjust_prices_for_dividends(

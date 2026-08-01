@@ -96,28 +96,45 @@ def monte_carlo_simulation(
 def rolling_correlation(
     returns: pd.DataFrame,
     window: int = 60,
+    max_pairs: int = 30,
 ) -> dict[str, pd.Series]:
     """Скользящие корреляции между парами активов.
+
+    Оптимизировано: вычисляет скользящую корреляцию только для top-N пар
+    по абсолютной средней корреляции (вместо всех C(n,2) пар).
 
     Args:
         returns: DataFrame с доходностями.
         window: Размер окна (дней).
+        max_pairs: Максимальное число пар для отображения.
 
     Returns:
         Словарь {ticker_pair: Series корреляций}.
     """
     tickers = returns.columns.tolist()
-    rolling_corr = {}
 
+    if len(tickers) < 2:
+        return {}
+
+    static_corr = returns.corr()
+    pairs_abs_mean = {}
     for i in range(len(tickers)):
         for j in range(i + 1, len(tickers)):
             pair_name = f"{tickers[i]}/{tickers[j]}"
-            corr_series = returns[tickers[i]].rolling(window).corr(returns[tickers[j]])
-            rolling_corr[pair_name] = corr_series.dropna()
+            pairs_abs_mean[pair_name] = abs(static_corr.iloc[i, j])
+
+    sorted_pairs = sorted(pairs_abs_mean, key=pairs_abs_mean.get, reverse=True)
+    top_pairs = sorted_pairs[:max_pairs]
+
+    rolling_corr = {}
+    for pair_name in top_pairs:
+        t1, t2 = pair_name.split("/")
+        corr_series = returns[t1].rolling(window).corr(returns[t2])
+        rolling_corr[pair_name] = corr_series.dropna()
 
     logger.info(
-        "Rolling correlation: %d pairs, window=%d days",
-        len(rolling_corr), window,
+        "Rolling correlation: %d pairs (from %d total), window=%d days",
+        len(rolling_corr), len(pairs_abs_mean), window,
     )
     return rolling_corr
 
