@@ -20,7 +20,11 @@ from .data_sources import DataSourceError, FixtureDataSource, get_data_source
 from .events import ingest_events
 from .io_util import atomic_write_json
 from .locks import PipelineLockError, pipeline_lock
-from .numeric import NumericValidationError, require_finite_number, require_nonnegative_finite
+from .numeric import (
+    NumericValidationError,
+    require_finite_number,
+    require_nonnegative_finite,
+)
 from .pipeline import current_weights_or_empty, run_optimize
 from .portfolio_state import HoldingsValidationError, load_holdings
 from .reporting import write_report

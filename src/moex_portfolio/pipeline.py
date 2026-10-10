@@ -15,7 +15,11 @@ import pandas as pd
 
 from .config import MAX_WEIGHT
 from .filters import prepare_returns
-from .numeric import NumericValidationError, require_finite_number, require_nonnegative_finite
+from .numeric import (
+    NumericValidationError,
+    require_finite_number,
+    require_nonnegative_finite,
+)
 from .optimizer import max_sharpe_portfolio
 from .portfolio_state import HoldingsValidationError, weights_from_holdings
 from .risk_models import covariance_matrix
