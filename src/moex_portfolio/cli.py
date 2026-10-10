@@ -425,16 +425,20 @@ def cmd_report(args: argparse.Namespace) -> int:
             if not args.run_id:
                 raise ValueError("--run-id is required")
             record = load_run(args.run_id)
-            payload = record.get("result") or {}
+            payload = dict(record.get("result") or {})
             payload.setdefault("success", record.get("status") == "ok")
             payload.setdefault("source", get_data_source_name())
+            payload["from_run_id"] = args.run_id
+            # Пишем под run_id самой команды report — не перезаписываем
+            # исходный отчёт optimize/compare (RESULT cur-20261010-2229 D5).
             paths = write_report(
-                run_id=args.run_id,
+                run_id=run["run_id"],
                 title=f"Report for {args.run_id}",
                 payload=payload,
             )
             out = {
-                "run_id": args.run_id,
+                "run_id": run["run_id"],
+                "from_run_id": args.run_id,
                 "report_json": str(paths["json"]),
                 "report_md": str(paths["md"]),
                 "journal_status": record.get("status"),

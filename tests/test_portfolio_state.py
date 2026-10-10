@@ -45,6 +45,53 @@ def test_save_and_load_with_positions(tmp_path, monkeypatch):
     assert loaded["positions"][0]["ticker"] == "SBER"
 
 
+def test_save_preserves_position_metadata(tmp_path, monkeypatch):
+    monkeypatch.setattr("moex_portfolio.portfolio_state.HOLDINGS_DIR", tmp_path)
+    data = {
+        "as_of": "2026-10-10",
+        "cash": 0.0,
+        "positions": [
+            {
+                "ticker": "TSTA",
+                "shares": 15,
+                "weight": 0.4,
+                "note": "merged",
+                "isin": "RU00TEST0001",
+                "secid": "TSTA",
+                "board": "TQBR",
+                "security_type": "share",
+                "accounts": [
+                    {"account_label": "a", "weight": 0.2, "shares": 10},
+                    {"account_label": "b", "weight": 0.2, "shares": 5},
+                ],
+            },
+            {"ticker": "TSTB", "weight": 0.6, "note": ""},
+        ],
+    }
+    save_holdings(data)
+    loaded = load_holdings()
+    pos = loaded["positions"][0]
+    assert pos["isin"] == "RU00TEST0001"
+    assert pos["secid"] == "TSTA"
+    assert pos["board"] == "TQBR"
+    assert pos["security_type"] == "share"
+    assert len(pos["accounts"]) == 2
+
+
+def test_canonical_weight_tolerance_is_tight():
+    data = {
+        "as_of": None,
+        "cash": 0.0,
+        "positions": [
+            {"ticker": "A", "weight": 0.40},
+            {"ticker": "B", "weight": 0.35},
+            {"ticker": "C", "weight": 0.248},
+        ],
+    }
+    with pytest.raises(HoldingsValidationError, match="weights sum"):
+        validate_holdings(data)
+
+
 def test_missing_file_returns_empty(tmp_path, monkeypatch):
     monkeypatch.setattr("moex_portfolio.portfolio_state.HOLDINGS_DIR", tmp_path)
     loaded = load_holdings()

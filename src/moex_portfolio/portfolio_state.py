@@ -22,8 +22,21 @@ logger = logging.getLogger(__name__)
 
 HOLDINGS_DIR = DATA_DIR / "portfolio"
 HOLDINGS_FILENAME = "holdings.json"
-# Единый допуск с analysis_spec аналитика (±0.005), RESULT cur-20261010-1936 §1.2d.
-WEIGHT_SUM_TOLERANCE = 5e-3
+# Канон CLI / результат оптимизатора: сумма весов ≈ 1.0 (±1e-6).
+WEIGHT_SUM_TOLERANCE = 1e-6
+# Вход CSV аналитика: допуск шире; адаптер может явно нормализовать (см. portfolio_adapter).
+ANALYST_WEIGHT_SUM_TOLERANCE = 5e-3
+
+# Метаданные позиции, сохраняемые при load/save (PORTFOLIO_CONTRACT / RESULT 1936).
+_POSITION_OPTIONAL_KEYS = (
+    "isin",
+    "secid",
+    "board",
+    "security_type",
+    "account_label",
+    "accounts",
+    "market_value",
+)
 
 
 class HoldingsValidationError(ValueError):
@@ -84,7 +97,10 @@ def validate_holdings(data: dict[str, Any]) -> None:
             raise HoldingsValidationError(f"position[{i}]: empty ticker")
         ticker = ticker.strip().upper()
         if ticker in seen:
-            raise HoldingsValidationError(f"duplicate ticker: {ticker}")
+            raise HoldingsValidationError(
+                f"duplicate ticker: {ticker} (code=HOLDINGS_DUPLICATE_TICKER); "
+                f"multi-account SECID must be consolidated by adapt-portfolio"
+            )
         seen.add(ticker)
 
         has_shares = pos.get("shares") is not None
@@ -109,7 +125,8 @@ def validate_holdings(data: dict[str, Any]) -> None:
 
     if weights and abs(sum(weights) - 1.0) > WEIGHT_SUM_TOLERANCE:
         raise HoldingsValidationError(
-            f"weights sum to {sum(weights):.6f}, expected 1.0"
+            f"weights sum to {sum(weights):.6f}, expected 1.0 "
+            f"±{WEIGHT_SUM_TOLERANCE} (code=HOLDINGS_WEIGHT_SUM)"
         )
 
 
@@ -123,6 +140,22 @@ def _normalize(data: dict[str, Any]) -> dict[str, Any]:
             item["shares"] = float(pos["shares"])
         if pos.get("weight") is not None:
             item["weight"] = float(pos["weight"])
+        for key in _POSITION_OPTIONAL_KEYS:
+            if pos.get(key) is None:
+                continue
+            val = pos[key]
+            if key in {"isin", "secid", "board"} and isinstance(val, str):
+                item[key] = val.strip().upper()
+            elif key == "security_type" and isinstance(val, str):
+                item[key] = val.strip().lower()
+            elif key == "account_label" and isinstance(val, str):
+                item[key] = val.strip()
+            elif key == "accounts" and isinstance(val, list):
+                item[key] = val
+            elif key == "market_value":
+                item[key] = float(val)
+            else:
+                item[key] = val
         positions.append(item)
 
     cash = data.get("cash", 0.0)

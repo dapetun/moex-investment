@@ -23,16 +23,27 @@ secid может быть `RU00TEST0004`). Порядок в адаптере:
 3. CSV `ticker` только если secid нет.
 
 `isin`/`board`/`security_type`/`account_label`/`notes→note` сохраняются в выводе
-адаптера. Битая строка или смешанные weight/shares → отказ всего файла
-(`PORTFOLIO_ROW_ERRORS` / `PORTFOLIO_MIXED_WEIGHTS`), без записи неполного
-holdings. Неоднозначность → `PORTFOLIO_ID_AMBIGUOUS`.
+адаптера и в `holdings.json` после `--write-holdings`. Битая строка или смешанные
+weight/shares → отказ всего файла (`PORTFOLIO_ROW_ERRORS` /
+`PORTFOLIO_MIXED_WEIGHTS`), без записи неполного holdings. Неоднозначность →
+`PORTFOLIO_ID_AMBIGUOUS`.
+
+Одинаковый SECID на нескольких счетах (`account_label`): адаптер **консолидирует**
+в одну позицию (сумма portfolio-level `weight` или `market_value` + `shares`),
+сохраняя исходные счета в `accounts[]`. Смешанная база (часть строк с weight,
+часть только shares/MV) → `PORTFOLIO_CONSOLIDATION_AMBIGUOUS`, без угадывания.
+Канонический `holdings.json` по-прежнему отвергает дубликат ticker
+(`duplicate ticker`) — дубликаты допустимы только во входном CSV до адаптера.
 
 ## 3. Веса
 
-- Единый допуск с аналитиком: сумма `weight` = 1.0 (±**0.005**).
+- Канон CLI / оптимизатор: сумма `weight` = 1.0 (±**1e-6**, `WEIGHT_SUM_TOLERANCE`).
+- Вход CSV аналитика: допуск ±**0.005** (`ANALYST_WEIGHT_SUM_TOLERANCE`).
+  При `1e-6 < |Σ−1| ≤ 0.005` адаптер **явно** нормализует веса к 1.0 и пишет в
+  метаданные `adapter.weight_normalized=true`, `adapter.weight_sum_before`.
+  Вне ±0.005 → reject (`PORTFOLIO_WEIGHT_SUM`), без тихой подгонки.
 - `cash` — абсолютная сумма (RUB), **не** входит в сумму весов.
 - Shares-only без weight → `HOLDINGS_SHARES_WITHOUT_WEIGHTS`.
-- Молча не нормируем; веса вне ±0.005 — reject.
 
 ## 4. Missing vs empty
 

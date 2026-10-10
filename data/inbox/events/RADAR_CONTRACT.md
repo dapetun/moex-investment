@@ -75,9 +75,10 @@ python -m moex_portfolio ingest-events \
 | более старый выпуск (`revision.number` или `radar_batch.generated_at`) | `stale_skipped` | current не трогаем; **не** rejected (exit 0) |
 
 **Первичный ключ:** только `event_id` (RESULT 1936).
-Жёсткая согласованность: `ticker`, `isin`, `event_type`, `event_date`, `issuer_name`.
+Жёсткая согласованность: `ticker`, `isin`, `event_type`, `event_date`.
 Мягкие (ревизия с флагом `soft_identity_changed`): `document_url`, `source_url`,
-`published_at`, `url`.
+`published_at`, `url`, `issuer_name` (радар может переписать сокращение/кавычки;
+RESULT `cur-20261010-2229` I9).
 Оценки / materiality / rationale — не идентичность.
 `novelty=clarification` с `duplicate_of` — **не** skip; skip только
 `novelty=duplicate` и `materiality=ignore`.
@@ -133,4 +134,8 @@ Legacy CLI: префиксы `disclosure_*` / `dividend_*` и короткие �
   (например `TEST-EV-20261009-SBER-001`), без пересечения с боевыми `EV-…`.
   В JSON Schema `event_id` — строка без regex; префикс `TEST-` допустим
   и не требует правки боевой схемы.
+- Каталог `processed/events/` общий для тестовых и боевых id (MVP).
+  Разделение — соглашением имён (`TEST-EV-…`); флаг `is_test` у пилотного
+  боевого выпуска радара тоже может быть `true`, поэтому по нему нельзя
+  отфильтровать каталог. Отдельный каталог/CLI-gate — вне текущего PR.
 - Упрощённый batch: `tests/fixtures/radar_batch_sample.json`

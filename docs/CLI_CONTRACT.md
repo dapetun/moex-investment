@@ -13,7 +13,7 @@
 | `optimize --allow-optimize` | Max Sharpe + QC | 0 | 2 QC/solver/params, 4 source |
 | `compare` | current vs last_target | 0 | 2 invalid holdings/target |
 | `ingest-events [--source PATH]` | радар/inbox → processed | 0 | 2 если `rejected>0` (partial) |
-| `report --run-id` | MD/JSON по journal | 0 | 1 missing run |
+| `report --run-id` | MD/JSON по journal (новый файл под run_id команды `report`, исходный отчёт optimize/compare не перезаписывается) | 0 | 1 missing run |
 
 Коды: `0` ok, `1` unexpected/missing run, `2` бизнес/валидация (в т.ч. partial ingest),
 `3` lock, `4` источник заблокирован.
@@ -57,6 +57,8 @@ data/locks/pipeline.lock
 
 См. `data/portfolio/PORTFOLIO_CONTRACT.md`. Адаптер CSV → holdings не пишет в
 `/workspace/invest`. `--write-holdings` пишет только `data/portfolio/holdings.json`.
+Канон весов ±1e-6; вход аналитика ±0.005 с явной нормализацией в адаптере.
+Одинаковый SECID на нескольких счетах консолидируется (`accounts[]`).
 
 ## События радара
 

@@ -156,7 +156,10 @@ def main() -> int:
 
     # revision of SBER-like first accepted event if present
     processed = clone / "data" / "processed" / "events"
-    targets = sorted(processed.glob("EV-*.json"))
+    # Пилот: TEST-EV-…; legacy/боевой: EV-… — оба пространства имён.
+    targets = sorted(processed.glob("TEST-EV-*.json")) or sorted(
+        processed.glob("EV-*.json")
+    )
     if targets:
         cur = json.loads(targets[0].read_text(encoding="utf-8"))
         rev = dict(cur)
