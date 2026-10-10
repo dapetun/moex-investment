@@ -126,14 +126,15 @@ HARD_IDENTITY_KEYS = (
     "isin",
     "event_type",
     "event_date",
-    "issuer_name",
 )
 # Мягкие поля: смена при том же event_id → ревизия с флагом, не conflict.
+# issuer_name — мягкое: радар может переписать сокращение/кавычки (RESULT 2002).
 SOFT_REVISION_KEYS = (
     "document_url",
     "source_url",
     "published_at",
     "url",
+    "issuer_name",
 )
 
 # Поля, изменение которых при той же идентичности = ревизия (update), не conflict.
@@ -285,20 +286,22 @@ def normalize_event(
     type_src = raw.get("event_type") or raw.get("type") or raw.get("category")
     out["event_type"] = canonicalize_event_type(type_src)
 
-    # published_at и event_date у радара — разные поля; не подменять без нужды.
-    if not out.get("published_at"):
+    # published_at и event_date — разные поля. Пустая/unknown строка → reject
+    # (не подменять event_date). Fallback только если ключ published_at отсутствует.
+    if "published_at" in raw:
+        out["published_at"] = parse_published_at(raw.get("published_at"))
+    elif not out.get("published_at"):
         for key in ("disclosure_date", "date", "published_date"):
             if raw.get(key):
-                out["published_at"] = raw[key]
+                out["published_at"] = parse_published_at(raw[key])
                 out["published_at_fallback_from"] = key
                 break
-        # Не подставляем event_date в published_at молча — только явный fallback
-        # для legacy без publication; валидатор всё равно проверит ISO.
-        if not out.get("published_at") and raw.get("event_date"):
-            out["published_at"] = raw["event_date"]
-            out["published_at_fallback_from"] = "event_date"
-
-    if out.get("published_at") is not None:
+        if not out.get("published_at"):
+            raise EventValidationError(
+                "missing published_at; require ISO date or datetime "
+                "(code=PUBLISHED_AT_INVALID)"
+            )
+    else:
         out["published_at"] = parse_published_at(out["published_at"])
 
     if not out.get("title"):
@@ -495,31 +498,37 @@ def _batch_generated_at(event: dict[str, Any]) -> str | None:
     return None
 
 
-def freshness_allows_update(
+def freshness_decision(
     existing: dict[str, Any], incoming: dict[str, Any]
-) -> tuple[bool, str, bool]:
-    """Можно ли принять incoming поверх existing по свежести.
+) -> tuple[str, str, bool]:
+    """Решение по свежести: allow | stale | conflict.
 
     Returns:
-        (allowed, reason, freshness_guaranteed)
+        (decision, reason, freshness_guaranteed)
     """
     er = _revision_number(existing)
     ir = _revision_number(incoming)
     if er is not None and ir is not None:
         if ir < er:
-            return False, f"stale_revision:{ir}<{er}", True
-        return True, f"revision:{ir}>={er}", True
+            return "stale", f"stale_revision:{ir}<{er}", True
+        if ir > er:
+            return "allow", f"revision:{ir}>{er}", True
+        # одинаковый revision.number — смотрим batch; иначе conflict
 
     eg = _batch_generated_at(existing)
     ig = _batch_generated_at(incoming)
     if eg and ig:
         if ig < eg:
-            return False, f"stale_batch:{ig}<{eg}", True
-        return True, f"batch_generated_at:{ig}>={eg}", True
+            return "stale", f"stale_batch:{ig}<{eg}", True
+        if ig > eg:
+            return "allow", f"batch_generated_at:{ig}>{eg}", True
+        # равные метки при разном содержимом → conflict (RESULT 1936 §3.4.2)
+        return "conflict", "equal_freshness_different_content", True
 
-    # Нет строгой метки свежести на уровне события — не блокируем ревизию,
-    # но не заявляем гарантию порядка.
-    return True, "freshness_unknown", False
+    if er is not None and ir is not None and ir == er:
+        return "conflict", "equal_revision_different_content", True
+
+    return "allow", "freshness_unknown", False
 
 
 def _write_json(path: Path, data: Any) -> None:
@@ -733,11 +742,10 @@ def ingest_events(
                             )
                             continue
 
-                        allowed, fresh_reason, guaranteed = freshness_allows_update(
+                        decision, fresh_reason, guaranteed = freshness_decision(
                             existing, event
                         )
-                        if not allowed:
-                            # stale_skipped: не rejected (RESULT 1936 §3.4)
+                        if decision == "stale":
                             stale_skipped += 1
                             details.append(
                                 {
@@ -746,6 +754,35 @@ def ingest_events(
                                     "event_id": event.get("event_id"),
                                     "dest": dest_name,
                                     "status": "stale_skipped",
+                                    "reason": fresh_reason,
+                                }
+                            )
+                            continue
+                        if decision == "conflict":
+                            conflict += 1
+                            rejected += 1
+                            rej = (
+                                REJECTED_DIR
+                                / f"{dest.stem}__conflict__{path.stem}_{idx}.json"
+                            )
+                            _write_json(
+                                rej,
+                                {
+                                    "error": "equal freshness with different content",
+                                    "code": "EVENT_EQUAL_FRESHNESS_CONFLICT",
+                                    "reason": fresh_reason,
+                                    "dest": dest_name,
+                                    "incoming": event,
+                                },
+                            )
+                            details.append(
+                                {
+                                    "file": path.name,
+                                    "index": idx,
+                                    "event_id": event.get("event_id"),
+                                    "dest": dest_name,
+                                    "status": "conflict",
+                                    "error": "EVENT_EQUAL_FRESHNESS_CONFLICT",
                                     "reason": fresh_reason,
                                 }
                             )

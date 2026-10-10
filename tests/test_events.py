@@ -49,6 +49,8 @@ def test_published_at_unknown_rejected():
     with pytest.raises(EventValidationError, match="PUBLISHED_AT_INVALID"):
         parse_published_at("unknown")
     with pytest.raises(EventValidationError, match="PUBLISHED_AT_INVALID"):
+        parse_published_at("")
+    with pytest.raises(EventValidationError, match="PUBLISHED_AT_INVALID"):
         validate_event(
             {
                 "event_type": "dividend_declared",
@@ -56,6 +58,21 @@ def test_published_at_unknown_rejected():
                 "url": "https://example.com/x",
                 "published_at": "unknown",
                 "source": "x",
+            }
+        )
+
+
+def test_published_at_empty_not_replaced_by_event_date():
+    with pytest.raises(EventValidationError, match="PUBLISHED_AT_INVALID"):
+        normalize_event(
+            {
+                "event_id": "e",
+                "event_type": "dividend_recommendation",
+                "source_name": "s",
+                "source_url": "https://example.com/x",
+                "factual_summary": "t",
+                "published_at": "",
+                "event_date": "2026-10-09",
             }
         )
 
@@ -295,6 +312,41 @@ def test_reassessment_updates_with_history(tmp_path, monkeypatch):
     report2 = ingest_events()
     assert report2["updated"] == 0
     assert report2["duplicate_skipped"] == 1
+
+
+def test_equal_revision_different_content_conflicts(tmp_path, monkeypatch):
+    inbox, processed, rejected, _archive, _history = _patch_event_dirs(
+        tmp_path, monkeypatch
+    )
+    existing = {
+        "event_id": "EV-EQ",
+        "event_type": "dividend_recommendation",
+        "title": "a",
+        "url": "https://example.com/d",
+        "document_url": "https://example.com/d.pdf",
+        "published_at": "2026-10-10",
+        "source": "x",
+        "ticker": "AAA",
+        "event_date": "2026-10-09",
+        "materiality": "high",
+        "revision": {"number": 3, "at": "2026-10-10T11:28:52+03:00"},
+        "radar_batch": {"generated_at": "2026-10-10T11:28:52+03:00"},
+    }
+    incoming = {
+        **existing,
+        "materiality": "medium",
+        "impact_rationale": "changed",
+    }
+    (processed / "EV-EQ.json").write_text(
+        json.dumps(existing, ensure_ascii=False), encoding="utf-8"
+    )
+    (inbox / "eq.json").write_text(json.dumps(incoming), encoding="utf-8")
+    report = ingest_events()
+    assert report["conflict"] == 1
+    assert report["updated"] == 0
+    assert report["details"][0]["error"] == "EVENT_EQUAL_FRESHNESS_CONFLICT"
+    cur = json.loads((processed / "EV-EQ.json").read_text(encoding="utf-8"))
+    assert cur["materiality"] == "high"
 
 
 def test_stale_batch_does_not_overwrite(tmp_path, monkeypatch):

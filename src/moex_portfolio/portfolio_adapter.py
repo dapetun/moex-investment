@@ -98,7 +98,16 @@ def csv_row_to_position(
         return None
 
     ticker = resolve_ticker(row, isin_to_ticker=isin_to_ticker)
-    pos: dict[str, Any] = {"ticker": ticker, "note": _cell(row, "note", "name") or ""}
+    pos: dict[str, Any] = {
+        "ticker": ticker,
+        "note": _cell(row, "note", "notes", "name") or "",
+    }
+    sec_type = _cell(row, "security_type", "type")
+    if sec_type and sec_type.lower() not in {"cash", "money", "currency"}:
+        pos["security_type"] = sec_type.lower()
+    account = _cell(row, "account_label", "account")
+    if account:
+        pos["account_label"] = account
 
     isin = _cell(row, "isin", "ISIN")
     if isin:
@@ -183,11 +192,25 @@ def adapt_analyst_csv(
             )
         rows = list(reader)
 
+    # as_of_date из CSV (одинаковое во всех строках) если не передан явно
+    if as_of is None:
+        as_ofs = {
+            _cell(r, "as_of", "as_of_date", "date")
+            for r in rows
+            if _cell(r, "as_of", "as_of_date", "date")
+        }
+        if len(as_ofs) == 1:
+            as_of = next(iter(as_ofs))
+        elif len(as_ofs) > 1:
+            raise PortfolioAdapterError(
+                f"conflicting as_of_date values in CSV: {sorted(as_ofs)} "
+                f"(code=PORTFOLIO_ASOF_CONFLICT)"
+            )
+
     positions: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
     for i, row in enumerate(rows):
         try:
-            # строка только cash
             kind = (_cell(row, "type", "security_type") or "").lower()
             ticker_cell = (_cell(row, "ticker", "symbol") or "").upper()
             if kind in {"cash", "money", "currency"} or ticker_cell in {"CASH", "RUB"}:
@@ -204,9 +227,22 @@ def adapt_analyst_csv(
         except PortfolioAdapterError as e:
             errors.append({"row": i, "error": str(e)})
 
-    if errors and not positions:
+    # Любая битая строка позиции — отказ всего файла (RESULT 2002 §3.3)
+    if errors:
         raise PortfolioAdapterError(
-            f"no valid positions; first error: {errors[0]['error']}"
+            f"portfolio CSV row errors ({len(errors)}): {errors[0]['error']} "
+            f"(code=PORTFOLIO_ROW_ERRORS)"
+        )
+    if not positions:
+        raise PortfolioAdapterError(
+            "no valid positions in portfolio CSV (code=PORTFOLIO_CSV_EMPTY)"
+        )
+
+    has_w = [p.get("weight") is not None for p in positions]
+    if any(has_w) and not all(has_w):
+        raise PortfolioAdapterError(
+            "mixed weight/shares rows: weight required on all rows or none "
+            "(code=PORTFOLIO_MIXED_WEIGHTS)"
         )
 
     cash_val = float(cash) if cash is not None else extract_cash_from_rows(rows)

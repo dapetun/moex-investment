@@ -27,6 +27,7 @@
       "source_name": "smart-lab",
       "source_url": "https://smart-lab.ru/dividends/example-gazp",
       "factual_summary": "Прогноз дивиденда по итогам периода.",
+      "published_at": "2026-10-08",
       "event_date": "2026-10-08",
       "facts": {
         "status": "forecast"

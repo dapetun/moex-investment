@@ -98,26 +98,13 @@ def main() -> int:
         clone,
         env,
     )
-    # adapt may fail if cli not on this SHA yet — fall back to writing holdings
     if code != 0:
-        holdings = {
-            "as_of": "2026-10-10",
-            "cash": 0.0,
-            "positions": [
-                {"ticker": "AAA", "weight": 0.4},
-                {"ticker": "BBB", "weight": 0.35},
-                {"ticker": "CCC", "weight": 0.25},
-            ],
-        }
-        hp = clone / "data" / "portfolio" / "holdings.json"
-        hp.parent.mkdir(parents=True, exist_ok=True)
-        hp.write_text(json.dumps(holdings, indent=2) + "\n", encoding="utf-8")
         note(
             "adapt-portfolio",
-            True,
+            False,
             exit=code,
-            fallback="wrote synthetic AAA/BBB/CCC holdings",
             stderr=err[:500],
+            stdout=out[:300],
         )
     else:
         payload = json.loads(out)
@@ -128,6 +115,22 @@ def main() -> int:
             n_positions=len(payload.get("positions", [])),
             file_status=payload.get("file_status"),
         )
+        # для compare/optimize дальше нужны веса на fixture-панели
+        hp = clone / "data" / "portfolio" / "holdings.json"
+        if hp.exists():
+            h = json.loads(hp.read_text(encoding="utf-8"))
+            # если адаптер записал TSTA…, дополним AAA/BBB/CCC для offline compare
+            if not any(p.get("ticker") in {"AAA", "BBB", "CCC"} for p in h.get("positions", [])):
+                h = {
+                    "as_of": "2026-10-10",
+                    "cash": 0.0,
+                    "positions": [
+                        {"ticker": "AAA", "weight": 0.4},
+                        {"ticker": "BBB", "weight": 0.35},
+                        {"ticker": "CCC", "weight": 0.25},
+                    ],
+                }
+                hp.write_text(json.dumps(h, indent=2) + "\n", encoding="utf-8")
 
     # 2) ingest pilot + revision
     src = work / "events_latest.json"

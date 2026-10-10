@@ -39,6 +39,26 @@ def test_ambiguous_isin_without_map_raises(tmp_path):
         adapt_analyst_csv(p)
 
 
+def test_bad_row_fails_whole_file(tmp_path):
+    p = tmp_path / "p.csv"
+    p.write_text(
+        "ticker,weight\nTSTA,0.5\nTSTB,0.5\nTSTC,abc\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioAdapterError, match="PORTFOLIO_ROW_ERRORS"):
+        adapt_analyst_csv(p)
+
+
+def test_mixed_weights_rejected(tmp_path):
+    p = tmp_path / "p.csv"
+    p.write_text(
+        "ticker,weight,quantity\nTSTA,0.5,\nTSTB,,10\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioAdapterError, match="PORTFOLIO_MIXED_WEIGHTS"):
+        adapt_analyst_csv(p)
+
+
 def test_isin_map_resolves(tmp_path):
     p = tmp_path / "p.csv"
     p.write_text("isin,weight\nRU00TEST0001,1.0\n", encoding="utf-8")

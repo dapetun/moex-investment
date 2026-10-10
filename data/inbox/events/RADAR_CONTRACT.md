@@ -121,8 +121,8 @@ Legacy CLI: префиксы `disclosure_*` / `dividend_*` и короткие �
 
 | Ситуация | exit | поля отчёта |
 |---|---|---|
-| все события приняты / skip semantics / дубликаты / updates без reject | 0 | `partial=false`, есть `updated` |
-| есть хотя бы один reject/conflict/stale | **2** | `partial=true`, JSON в **stderr**, `details[]` с `event_id` |
+| все события приняты / skip / дубликаты / updates / `stale_skipped` | 0 | `partial=false`; `stale_skipped` не rejected |
+| есть хотя бы один reject/conflict (в т.ч. equal-freshness) | **2** | `partial=true`, JSON в **stderr**, `details[]` с `event_id` |
 
 ## Фикстуры
 
