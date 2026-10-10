@@ -70,13 +70,23 @@ data/locks/                      # pipeline.lock
 python -m moex_portfolio show-portfolio
 python -m moex_portfolio update-data
 python -m moex_portfolio validate-data --max-staleness-days 5
-python -m moex_portfolio ingest-events
+# мост радар → CLI (оригинал /workspace/invest/... не удаляется):
+python -m moex_portfolio ingest-events \
+  --source /workspace/invest/news/events_latest.json
+# либо положить копию вручную в data/inbox/events/ и вызвать без --source
 python -m moex_portfolio optimize --allow-optimize --mode universe --max-weight 0.5
 python -m moex_portfolio compare --min-drift 0.05
 python -m moex_portfolio report --run-id <run_id>
 ```
 
-Коды выхода: `0` ok, `2` бизнес/валидация, `3` lock занят, `4` источник заблокирован (ISS).
+Коды выхода: `0` ok, `1` непредвиденная ошибка / missing run, `2` бизнес/валидация
+(включая **частичный** отказ ingest: `partial=true`), `3` lock занят,
+`4` источник заблокирован (ISS).
+
+Радар пишет только в `/workspace/invest/news/`. CLI читает
+`<repo>/data/inbox/events/`. Без шага `--source` (или ручного копирования)
+события не появятся. После ingest исходник из inbox архивируется в
+`data/processed/inbox_archive/`.
 
 `optimize` без `--allow-optimize` отказывается работать.
 
@@ -89,9 +99,15 @@ python -m moex_portfolio report --run-id <run_id>
 
 ## 4. Роли ботов
 
-**Бот №1 (корпоративный мониторинг):** браузер → e-disclosure и (опционально) Finam / Smart-Lab / ДОХОДЪ → JSON в `data/inbox/events/`. Не сохранять сессии Cbonds на shared computer без явного согласия владельца. Cbonds вне обязательного MVP.
+**Бот №1 (корпоративный мониторинг):** пишет выпуск в
+`/workspace/invest/news/events_latest.json` (schema 1.1). В `data/inbox/events/`
+радара нет — мост через `ingest-events --source …` (см. выше). Не сохранять
+сессии Cbonds на shared computer без согласия владельца.
 
-**Бот №2 (аналитик):** вызывает CLI, читает `outbox/reports` и journal, пишет текстовые пояснения. Не подменяет числа CLI. Не запускает ISS.
+**Бот №2 (аналитик):** пока **не** подключать CLI к рабочим инструкциям /
+`optimizer.yaml` (`enabled: false`), пока не закрыты условия из decisions
+handoff. Технически может вызывать CLI и читать stdout/exit/`outbox/`.
+Не подменяет числа CLI. Не запускает ISS.
 
 ## 5. Юридический стоп по ISS
 

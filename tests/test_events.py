@@ -70,14 +70,24 @@ def test_radar_normalize_preserves_fields():
     assert event["event_id"] == "e-1"
 
 
-def test_radar_batch_full_cycle(tmp_path, monkeypatch):
+def _patch_event_dirs(tmp_path, monkeypatch):
     inbox = tmp_path / "inbox"
     processed = tmp_path / "processed"
     rejected = tmp_path / "rejected"
-    inbox.mkdir()
+    archive = tmp_path / "archive"
+    batches = tmp_path / "batches"
+    for d in (inbox, processed, rejected, archive, batches):
+        d.mkdir(exist_ok=True)
     monkeypatch.setattr("moex_portfolio.events.INBOX_DIR", inbox)
     monkeypatch.setattr("moex_portfolio.events.PROCESSED_DIR", processed)
     monkeypatch.setattr("moex_portfolio.events.REJECTED_DIR", rejected)
+    monkeypatch.setattr("moex_portfolio.events.INBOX_ARCHIVE_DIR", archive)
+    monkeypatch.setattr("moex_portfolio.events.BATCH_META_DIR", batches)
+    return inbox, processed, rejected, archive
+
+
+def test_radar_batch_full_cycle(tmp_path, monkeypatch):
+    inbox, processed, rejected, archive = _patch_event_dirs(tmp_path, monkeypatch)
 
     payload = json.loads(RADAR_FIXTURE.read_text(encoding="utf-8"))
     (inbox / "radar_batch.json").write_text(
@@ -88,6 +98,7 @@ def test_radar_batch_full_cycle(tmp_path, monkeypatch):
     assert report["accepted"] == 2
     assert report["rejected"] == 0
     assert not (inbox / "radar_batch.json").exists()
+    assert list(archive.glob("*.json")), "inbox file must be archived"
     assert (processed / "radar-2026-001.json").exists()
     assert (processed / "radar-2026-002.json").exists()
 
@@ -112,14 +123,7 @@ def test_radar_batch_full_cycle(tmp_path, monkeypatch):
 
 
 def test_duplicate_event_id_skipped(tmp_path, monkeypatch):
-    inbox = tmp_path / "inbox"
-    processed = tmp_path / "processed"
-    rejected = tmp_path / "rejected"
-    inbox.mkdir()
-    processed.mkdir()
-    monkeypatch.setattr("moex_portfolio.events.INBOX_DIR", inbox)
-    monkeypatch.setattr("moex_portfolio.events.PROCESSED_DIR", processed)
-    monkeypatch.setattr("moex_portfolio.events.REJECTED_DIR", rejected)
+    inbox, processed, rejected, _archive = _patch_event_dirs(tmp_path, monkeypatch)
 
     event = {
         "event_id": "same-id",
@@ -141,14 +145,7 @@ def test_duplicate_event_id_skipped(tmp_path, monkeypatch):
 
 
 def test_same_filename_different_content_conflict(tmp_path, monkeypatch):
-    inbox = tmp_path / "inbox"
-    processed = tmp_path / "processed"
-    rejected = tmp_path / "rejected"
-    inbox.mkdir()
-    processed.mkdir()
-    monkeypatch.setattr("moex_portfolio.events.INBOX_DIR", inbox)
-    monkeypatch.setattr("moex_portfolio.events.PROCESSED_DIR", processed)
-    monkeypatch.setattr("moex_portfolio.events.REJECTED_DIR", rejected)
+    inbox, processed, rejected, _archive = _patch_event_dirs(tmp_path, monkeypatch)
 
     existing = {
         "event_id": "same-id",

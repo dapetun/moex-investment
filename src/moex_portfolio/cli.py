@@ -321,19 +321,40 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         return 1
 
 
-def cmd_ingest_events(_args: argparse.Namespace) -> int:
-    """Принять JSON-события бота №1 из inbox."""
-    run = start_run("ingest-events")
+def cmd_ingest_events(args: argparse.Namespace) -> int:
+    """Принять JSON-события радара/inbox.
+
+    Частичный отказ (rejected>0) → код 2, даже если часть событий принята.
+    ``--source`` копирует выпуск радара в inbox, оригинал не удаляет.
+    """
+    source = (getattr(args, "source", None) or "").strip() or None
+    run = start_run(
+        "ingest-events",
+        params={"source": source} if source else {},
+    )
     try:
         with pipeline_lock("pipeline"):
-            report = ingest_events()
-        finish_run(run["run_id"], status="ok", result=report)
-        _print_json(report)
-        return 0 if report["rejected"] == 0 or report["accepted"] > 0 else 2
+            report = ingest_events(source_path=source, keep_source=True)
+        code = 0 if not report.get("partial") else 2
+        finish_run(
+            run["run_id"],
+            status="ok" if code == 0 else "error",
+            result=report,
+            error=None
+            if code == 0
+            else f"partial ingest: accepted={report.get('accepted')} "
+            f"rejected={report.get('rejected')}",
+        )
+        _print_json(report, stream=sys.stdout if code == 0 else sys.stderr)
+        return code
     except PipelineLockError as e:
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e)}, stream=sys.stderr)
         return 3
+    except FileNotFoundError as e:
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e), "code": "SOURCE_NOT_FOUND"}, stream=sys.stderr)
+        return 2
     except Exception as e:  # noqa: BLE001
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e)}, stream=sys.stderr)
@@ -516,7 +537,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_cmp.set_defaults(func=cmd_compare)
 
-    p_ing = sub.add_parser("ingest-events", help="Validate bot#1 JSON events from inbox")
+    p_ing = sub.add_parser(
+        "ingest-events",
+        help="Ingest Corporate Radar / inbox JSON (partial reject → exit 2)",
+    )
+    p_ing.add_argument(
+        "--source",
+        default="",
+        help=(
+            "Path to radar release JSON (e.g. /workspace/invest/news/events_latest.json). "
+            "Copied into data/inbox/events/; original is never deleted."
+        ),
+    )
     p_ing.set_defaults(func=cmd_ingest_events)
 
     p_rep = sub.add_parser("report", help="Write MD/JSON report for a journal run_id")

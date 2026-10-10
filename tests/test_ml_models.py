@@ -166,6 +166,7 @@ def test_automl_train_insufficient_data():
 
 
 def test_automl_walk_forward(sample_returns):
+    pytest.importorskip("flaml", reason="FLAML not installed")
     from moex_portfolio.ml_models import automl_walk_forward
 
     result = automl_walk_forward(
@@ -178,6 +179,7 @@ def test_automl_walk_forward(sample_returns):
 
 
 def test_compare_with_automl(sample_returns):
+    pytest.importorskip("flaml", reason="FLAML not installed")
     from moex_portfolio.ml_models import compare_with_automl
 
     df = compare_with_automl(sample_returns, time_budget=10)
@@ -189,6 +191,7 @@ def test_compare_with_automl(sample_returns):
 
 
 def test_compare_models_with_automl_key(sample_returns):
+    pytest.importorskip("flaml", reason="FLAML not installed")
     df = compare_ml_models(
         sample_returns, model_names=["ridge", "automl"],
         time_budget=10,
