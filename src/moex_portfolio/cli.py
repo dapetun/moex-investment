@@ -14,12 +14,13 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .compare import compare_weights
-from .config import DATA_DIR
+from .config import DATA_DIR, MIN_TURNOVER
 from .data_quality import validate_for_optimize
 from .data_sources import DataSourceError, FixtureDataSource, get_data_source
 from .events import ingest_events
+from .io_util import atomic_write_json
 from .locks import PipelineLockError, pipeline_lock
-from .numeric import NumericValidationError, require_nonnegative_finite
+from .numeric import NumericValidationError, require_finite_number, require_nonnegative_finite
 from .pipeline import current_weights_or_empty, run_optimize
 from .portfolio_state import HoldingsValidationError, load_holdings
 from .reporting import write_report
@@ -193,11 +194,21 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         )
         return 2
 
+    try:
+        max_weight = require_finite_number(args.max_weight, "max_weight")
+        if not (0.0 < max_weight <= 1.0):
+            raise NumericValidationError(
+                f"max_weight must be in (0, 1], got {max_weight}"
+            )
+    except NumericValidationError as e:
+        _print_json({"error": str(e), "code": "INVALID_MAX_WEIGHT"}, stream=sys.stderr)
+        return 2
+
     run = start_run(
         "optimize",
         params={
             "mode": args.mode,
-            "max_weight": args.max_weight,
+            "max_weight": max_weight,
             "source": get_data_source_name(),
             "iss_enabled": iss_enabled(),
         },
@@ -237,13 +248,17 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                 _print_json(payload, stream=sys.stderr)
                 return 2
 
+            # Фикстура: min_turnover=0 (синтетика без реальной ликвидности).
+            # market/iss: тот же MIN_TURNOVER, что и Streamlit-путь.
+            min_turnover = 0.0 if src.name == "fixture" else float(MIN_TURNOVER)
+
             holdings = load_holdings()
             result = run_optimize(
                 prices,
-                max_weight=args.max_weight,
+                max_weight=max_weight,
                 mode=args.mode,
                 holdings=holdings,
-                min_turnover=0.0,
+                min_turnover=min_turnover,
             )
             result["source"] = src.name
             result["is_live_market"] = bool(qc.get("is_live_market"))
@@ -251,21 +266,15 @@ def cmd_optimize(args: argparse.Namespace) -> int:
             result["target_updated"] = False
 
             if result.get("success") is True:
-                LAST_TARGET_PATH.parent.mkdir(parents=True, exist_ok=True)
-                LAST_TARGET_PATH.write_text(
-                    json.dumps(
-                        {
-                            "weights": result["weights"],
-                            "tickers": result["tickers"],
-                            "success": True,
-                            "source": src.name,
-                            "is_live_market": result["is_live_market"],
-                        },
-                        ensure_ascii=False,
-                        indent=2,
-                    )
-                    + "\n",
-                    encoding="utf-8",
+                atomic_write_json(
+                    LAST_TARGET_PATH,
+                    {
+                        "weights": result["weights"],
+                        "tickers": result["tickers"],
+                        "success": True,
+                        "source": src.name,
+                        "is_live_market": result["is_live_market"],
+                    },
                 )
                 result["target_path"] = str(LAST_TARGET_PATH)
                 result["target_updated"] = True
@@ -413,10 +422,21 @@ def cmd_compare(args: argparse.Namespace) -> int:
                 )
             target_data = json.loads(target_path.read_text(encoding="utf-8"))
             target = _require_successful_target(target_data, target_path)
-            report = compare_weights(current, target, min_drift=args.min_drift)
+            try:
+                min_drift = require_nonnegative_finite(args.min_drift, "min_drift")
+            except NumericValidationError:
+                raise
+            report = compare_weights(current, target, min_drift=min_drift)
             report["target_path"] = str(target_path)
             report["holdings_empty"] = len(current) == 0
             report["target_success"] = True
+            paths = write_report(
+                run_id=run["run_id"],
+                title="Compare report",
+                payload={"success": True, "compare": report, "source": get_data_source_name()},
+            )
+            report["report_json"] = str(paths["json"])
+            report["report_md"] = str(paths["md"])
 
         finish_run(run["run_id"], status="ok", result=report)
         _print_json(report)

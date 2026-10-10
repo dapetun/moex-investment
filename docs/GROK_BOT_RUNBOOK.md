@@ -10,14 +10,17 @@
 cd /workspace
 git clone https://github.com/dapetun/moex-investment.git
 cd moex-investment
-# выберите нужную ветку явно:
-# git checkout main
-# или: git checkout prod
+# для приёмки PR #2:
+# git fetch origin feature/headless-cli-grok-bot
+# git checkout feature/headless-cli-grok-bot
+# git rev-parse HEAD   # зафиксируйте SHA
 python3 -m venv .venv
 source .venv/bin/activate   # Windows cloud: .venv\Scripts\activate
 pip install -U pip
+# CLI + тесты: без Streamlit и без flaml (ML — optional extra)
 pip install -e ".[dev]"
-# dashboard (Streamlit) на машине бота обычно не нужен
+# dashboard на машине бота обычно не нужен:
+# pip install -e ".[dashboard,ml]"
 ```
 
 Храните venv внутри `/workspace/moex-investment/.venv` (после computer update пакеты могут пропасть — переустановите по этому runbook).
@@ -76,6 +79,13 @@ python -m moex_portfolio report --run-id <run_id>
 Коды выхода: `0` ok, `2` бизнес/валидация, `3` lock занят, `4` источник заблокирован (ISS).
 
 `optimize` без `--allow-optimize` отказывается работать.
+
+`compare` для пустого текущего портфеля возвращает `allocation_kind=initial_allocation`
+(`needs_rebalance=false`, `needs_action=true` при drift ≥ порога) — это не обычный ребаланс.
+
+Если после аварийного kill остался `data/locks/pipeline.lock` с мёртвым PID,
+следующий запуск CLI снимает stale lock автоматически. Если PID ещё «жив» в ОС —
+удалите lock вручную только убедившись, что другого `python -m moex_portfolio` нет.
 
 ## 4. Роли ботов
 

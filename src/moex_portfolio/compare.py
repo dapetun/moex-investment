@@ -69,8 +69,18 @@ def compare_weights(
         )
 
     max_abs = require_finite_number(max_abs, "max_abs_drift")
+    # Пустой текущий портфель + непустой target — первичное размещение, не ребаланс.
+    if not current_c and target_c:
+        allocation_kind = "initial_allocation"
+        needs_action = max_abs >= min_drift_f
+    else:
+        allocation_kind = "rebalance"
+        needs_action = max_abs >= min_drift_f
+
     return {
-        "needs_rebalance": max_abs >= min_drift_f,
+        "needs_rebalance": needs_action and allocation_kind == "rebalance",
+        "needs_action": needs_action,
+        "allocation_kind": allocation_kind,
         "max_abs_drift": max_abs,
         "min_drift": min_drift_f,
         "diffs": diffs,

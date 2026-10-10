@@ -138,6 +138,19 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
     if out.get("event_id") is None and raw.get("id") is not None:
         out["event_id"] = raw["id"]
 
+    # Оценки/скоры радара (акции/облигации) — сохраняем без интерпретации.
+    for score_key in (
+        "equity_score",
+        "bond_score",
+        "score_equity",
+        "score_bond",
+        "scores",
+        "impact_score",
+        "severity_score",
+    ):
+        if score_key in raw and score_key not in out:
+            out[score_key] = raw[score_key]
+
     validate_event(out)
     return out
 
@@ -196,6 +209,9 @@ def _events_equivalent(a: dict[str, Any], b: dict[str, Any]) -> bool:
         "company",
         "summary",
         "facts",
+        "equity_score",
+        "bond_score",
+        "scores",
     )
     return all(a.get(k) == b.get(k) for k in keys)
 

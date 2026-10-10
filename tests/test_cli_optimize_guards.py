@@ -113,9 +113,9 @@ def test_optimize_blocked_when_market_data_stale(tmp_path, monkeypatch, capsys):
 
     stale = pd.DataFrame(
         {
-            "AAA": range(30),
+            "AAA": [10.0 + i for i in range(30)],
             "AAA_VALUE": [1e8] * 30,
-            "BBB": range(30),
+            "BBB": [20.0 + i for i in range(30)],
             "BBB_VALUE": [1e8] * 30,
         },
         index=pd.bdate_range("2020-01-02", periods=30),

@@ -95,7 +95,20 @@ def test_radar_batch_full_cycle(tmp_path, monkeypatch):
     assert e1["event_type"] == "disclosure_material_fact"
     assert e1["url"].startswith("https://www.e-disclosure.ru")
     assert e1["facts"]["currency"] == "RUB"
+    assert e1["equity_score"] == 0.72
+    assert e1["bond_score"] == 0.15
+    assert e1["scores"]["equity"] == 0.72
     assert "radar_original" in e1
+
+    # повторная доставка того же выпуска — без дублей и без порчи
+    (inbox / "radar_batch.json").write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+    )
+    report2 = ingest_events()
+    assert report2["accepted"] == 0
+    assert report2["duplicate_skipped"] == 2
+    assert report2["conflict"] == 0
+    assert report2["rejected"] == 0
 
 
 def test_duplicate_event_id_skipped(tmp_path, monkeypatch):

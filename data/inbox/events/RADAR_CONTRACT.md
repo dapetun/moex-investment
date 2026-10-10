@@ -24,9 +24,19 @@
 2. Известные алиасы (`dividend`, `e-disclosure`, `meeting`, …) → таблица в `events.py`.
 3. Иначе → `EVENT_TYPE_UNMAPPED` (не подставляем фиктивный `disclosure_*`).
 
-## Подтвердить у владельца радара
+## Сохраняемые без интерпретации поля
 
-1. Точное имя поля даты публикации.
+Адаптер копирует и не переименовывает (если присутствуют):
+`event_id`, `facts`, `equity_score`, `bond_score`, `score_equity`,
+`score_bond`, `scores`, `impact_score`, `severity_score`, плюс полный
+`radar_original`.
+
+## Подтвердить у владельца радара / Grok Bot
+
+1. Точное имя поля даты публикации (`published_at` vs `event_date`).
 2. Полный перечень значений `event_type` / `category` / `type`.
 3. Имя корневого ключа пакета (`events` или иное).
-4. Наличие и формат `event_id` / `facts`.
+4. Наличие и формат `event_id` / `facts` / оценок акций и облигаций.
+5. Канонический путь выпуска на облаке (`/workspace/invest/...`).
+
+Синтетическая фикстура адаптера: `tests/fixtures/radar_batch_sample.json`.

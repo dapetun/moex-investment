@@ -14,7 +14,10 @@
       "facts": {
         "dividend_per_share": 33.3,
         "currency": "RUB"
-      }
+      },
+      "equity_score": 0.72,
+      "bond_score": 0.15,
+      "scores": {"equity": 0.72, "bond": 0.15}
     },
     {
       "event_id": "radar-2026-002",
@@ -27,7 +30,9 @@
       "event_date": "2026-10-08",
       "facts": {
         "status": "forecast"
-      }
+      },
+      "equity_score": 0.55,
+      "bond_score": 0.40
     }
   ]
 }

@@ -6,6 +6,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 
@@ -145,6 +146,24 @@ def validate_price_panel(
     if work.index.duplicated().any():
         _bump(ValidationStatus.INVALID)
         issues.append("duplicate dates in index")
+
+    # Дата «из будущего» относительно as_of — аномалия (и для фикстур).
+    if age_days is not None and age_days < 0:
+        _bump(ValidationStatus.INVALID)
+        issues.append(
+            f"last_data_date {last_date} is {abs(age_days)}d ahead of as_of {as_of}"
+        )
+
+    if price_cols:
+        numeric = work[price_cols].apply(pd.to_numeric, errors="coerce")
+        values = numeric.to_numpy(dtype=float, copy=False)
+        known = ~np.isnan(values)
+        if known.any() and not np.isfinite(values[known]).all():
+            _bump(ValidationStatus.INVALID)
+            issues.append("non-finite (Inf) price values present")
+        if known.any() and (values[known] <= 0).any():
+            _bump(ValidationStatus.INVALID)
+            issues.append("non-positive price values present (zero or negative)")
 
     return {
         "ok": status == ValidationStatus.OK,

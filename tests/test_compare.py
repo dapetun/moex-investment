@@ -23,5 +23,13 @@ def test_compare_drift_triggers():
 
 def test_compare_empty_current():
     report = compare_weights({}, {"A": 1.0}, min_drift=0.05)
-    assert report["needs_rebalance"] is True
+    assert report["allocation_kind"] == "initial_allocation"
+    assert report["needs_rebalance"] is False
+    assert report["needs_action"] is True
     assert report["max_abs_drift"] == 1.0
+
+
+def test_compare_rebalance_kind_when_both_nonempty():
+    report = compare_weights({"A": 1.0}, {"A": 0.5, "B": 0.5}, min_drift=0.05)
+    assert report["allocation_kind"] == "rebalance"
+    assert report["needs_rebalance"] is True
