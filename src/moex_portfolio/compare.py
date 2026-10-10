@@ -4,6 +4,26 @@ from __future__ import annotations
 
 from typing import Any
 
+from .numeric import (
+    NumericValidationError,
+    require_finite_number,
+    require_nonnegative_finite,
+)
+
+WEIGHT_SUM_TOLERANCE = 1e-6
+
+
+def _validate_weight_map(weights: dict[str, float], name: str) -> dict[str, float]:
+    if not isinstance(weights, dict):
+        raise NumericValidationError(f"{name} must be a dict")
+    clean: dict[str, float] = {}
+    for ticker, value in weights.items():
+        if not isinstance(ticker, str) or not ticker.strip():
+            raise NumericValidationError(f"{name}: empty ticker key")
+        w = require_nonnegative_finite(value, f"{name}[{ticker}]")
+        clean[ticker.strip().upper()] = w
+    return clean
+
 
 def compare_weights(
     current: dict[str, float],
@@ -12,21 +32,32 @@ def compare_weights(
 ) -> dict[str, Any]:
     """Сравнить веса и решить, нужен ли ребаланс по порогу drift.
 
-    Args:
-        current: Фактические веса.
-        target: Целевые веса.
-        min_drift: Порог абсолютного отклонения по любому тикеру.
-
-    Returns:
-        needs_rebalance, max_abs_drift, diffs, tickers, min_drift.
+    Raises:
+        NumericValidationError: NaN/Inf/отрицательные веса/некорректный min_drift.
     """
-    tickers = sorted(set(current) | set(target))
+    min_drift_f = require_nonnegative_finite(min_drift, "min_drift")
+    current_c = _validate_weight_map(current, "current")
+    target_c = _validate_weight_map(target, "target")
+
+    if target_c:
+        tw = sum(target_c.values())
+        if abs(tw - 1.0) > WEIGHT_SUM_TOLERANCE:
+            raise NumericValidationError(
+                f"target weights sum to {tw:.6f}, expected 1.0 "
+                f"(tol={WEIGHT_SUM_TOLERANCE})"
+            )
+
+    tickers = sorted(set(current_c) | set(target_c))
     diffs = []
     max_abs = 0.0
     for t in tickers:
-        c = float(current.get(t, 0.0))
-        tg = float(target.get(t, 0.0))
+        c = require_finite_number(current_c.get(t, 0.0), f"current[{t}]")
+        tg = require_finite_number(target_c.get(t, 0.0), f"target[{t}]")
+        if c < 0 or tg < 0:
+            raise NumericValidationError(f"negative weight in drift for {t}")
         drift = abs(c - tg)
+        if not (drift == drift) or drift == float("inf"):  # pragma: no cover
+            raise NumericValidationError(f"non-finite drift for {t}")
         max_abs = max(max_abs, drift)
         diffs.append(
             {
@@ -37,10 +68,11 @@ def compare_weights(
             }
         )
 
+    max_abs = require_finite_number(max_abs, "max_abs_drift")
     return {
-        "needs_rebalance": max_abs >= min_drift,
+        "needs_rebalance": max_abs >= min_drift_f,
         "max_abs_drift": max_abs,
-        "min_drift": min_drift,
+        "min_drift": min_drift_f,
         "diffs": diffs,
         "tickers": tickers,
     }

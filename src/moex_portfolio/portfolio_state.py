@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import DATA_DIR
+from .numeric import NumericValidationError, require_nonnegative_finite
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +63,9 @@ def validate_holdings(data: dict[str, Any]) -> None:
     if cash is None:
         cash = 0.0
     try:
-        cash_f = float(cash)
-    except (TypeError, ValueError) as e:
-        raise HoldingsValidationError("'cash' must be a number") from e
-    if cash_f < 0:
-        raise HoldingsValidationError("'cash' must be >= 0")
+        require_nonnegative_finite(cash, "cash")
+    except NumericValidationError as e:
+        raise HoldingsValidationError(str(e)) from e
 
     seen: set[str] = set()
     weights: list[float] = []
@@ -90,27 +89,15 @@ def validate_holdings(data: dict[str, Any]) -> None:
 
         if has_shares:
             try:
-                shares = float(pos["shares"])
-            except (TypeError, ValueError) as e:
-                raise HoldingsValidationError(
-                    f"position[{i}] ({ticker}): invalid shares"
-                ) from e
-            if shares < 0:
-                raise HoldingsValidationError(
-                    f"position[{i}] ({ticker}): shares must be >= 0"
-                )
+                require_nonnegative_finite(pos["shares"], f"position[{i}].shares")
+            except NumericValidationError as e:
+                raise HoldingsValidationError(str(e)) from e
 
         if has_weight:
             try:
-                w = float(pos["weight"])
-            except (TypeError, ValueError) as e:
-                raise HoldingsValidationError(
-                    f"position[{i}] ({ticker}): invalid weight"
-                ) from e
-            if w < 0:
-                raise HoldingsValidationError(
-                    f"position[{i}] ({ticker}): weight must be >= 0"
-                )
+                w = require_nonnegative_finite(pos["weight"], f"position[{i}].weight")
+            except NumericValidationError as e:
+                raise HoldingsValidationError(str(e)) from e
             weights.append(w)
 
     if weights and abs(sum(weights) - 1.0) > WEIGHT_SUM_TOLERANCE:

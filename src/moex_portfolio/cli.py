@@ -19,6 +19,7 @@ from .data_quality import validate_for_optimize
 from .data_sources import DataSourceError, FixtureDataSource, get_data_source
 from .events import ingest_events
 from .locks import PipelineLockError, pipeline_lock
+from .numeric import NumericValidationError, require_nonnegative_finite
 from .pipeline import current_weights_or_empty, run_optimize
 from .portfolio_state import HoldingsValidationError, load_holdings
 from .reporting import write_report
@@ -137,6 +138,13 @@ def cmd_update_data(_args: argparse.Namespace) -> int:
                 raise DataSourceError(
                     "ISS update blocked until written legal clearance; "
                     "MOEX_ISS_ENABLED gate still prevents live fetch wiring"
+                )
+            if src.name == "market":
+                raise DataSourceError(
+                    "update-data refuses market self-refresh: runtime cache is not "
+                    "an approved upstream quote source "
+                    "(code=MARKET_UPDATE_NO_UPSTREAM). "
+                    "Use MOEX_DATA_SOURCE=fixture until a cleared feed exists."
                 )
             df = src.load_prices()
             cache = runtime_cache_path()
@@ -355,7 +363,7 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 
 def _require_successful_target(target_data: dict[str, Any], target_path: Path) -> dict[str, float]:
-    """Принять только target с явным success=true."""
+    """Принять только target с явным success=true и конечными весами Σ=1."""
     if not isinstance(target_data, dict):
         raise TargetValidationError(
             f"invalid target file {target_path}: expected JSON object"
@@ -373,7 +381,22 @@ def _require_successful_target(target_data: dict[str, Any], target_path: Path) -
             f"target {target_path} missing non-empty 'weights' "
             "(code=TARGET_MISSING_WEIGHTS)"
         )
-    return {str(k): float(v) for k, v in weights.items()}
+    clean: dict[str, float] = {}
+    try:
+        for ticker, value in weights.items():
+            if not isinstance(ticker, str) or not ticker.strip():
+                raise TargetValidationError("empty ticker in target weights")
+            w = require_nonnegative_finite(value, f"target.weights[{ticker}]")
+            clean[ticker.strip().upper()] = w
+        total = sum(clean.values())
+        if abs(total - 1.0) > 1e-6:
+            raise TargetValidationError(
+                f"target weights sum to {total:.6f}, expected 1.0 "
+                "(code=TARGET_WEIGHT_SUM)"
+            )
+    except NumericValidationError as e:
+        raise TargetValidationError(str(e)) from e
+    return clean
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
@@ -402,7 +425,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e)}, stream=sys.stderr)
         return 3
-    except (HoldingsValidationError, TargetValidationError) as e:
+    except (HoldingsValidationError, TargetValidationError, NumericValidationError) as e:
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e)}, stream=sys.stderr)
         return 2
