@@ -26,7 +26,8 @@ from .numeric import (
     require_nonnegative_finite,
 )
 from .pipeline import current_weights_or_empty, run_optimize
-from .portfolio_state import HoldingsValidationError, load_holdings
+from .portfolio_adapter import PortfolioAdapterError, adapt_analyst_csv
+from .portfolio_state import HoldingsValidationError, load_holdings, save_holdings
 from .reporting import write_report
 from .run_journal import finish_run, load_run, start_run
 from .settings import get_data_source_name, iss_enabled, runtime_cache_path
@@ -321,6 +322,61 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_adapt_portfolio(args: argparse.Namespace) -> int:
+    """Read-only адаптер CSV аналитика → канон holdings (не трогает /workspace/invest)."""
+    run = start_run(
+        "adapt-portfolio",
+        params={"csv": args.csv, "write_holdings": bool(args.write_holdings)},
+    )
+    try:
+        with pipeline_lock("pipeline"):
+            mapping: dict[str, str] | None = None
+            if args.isin_map:
+                mapping = json.loads(Path(args.isin_map).read_text(encoding="utf-8"))
+            panel = None
+            if args.panel_tickers:
+                panel = {t.strip().upper() for t in args.panel_tickers.split(",") if t.strip()}
+            holdings = adapt_analyst_csv(
+                args.csv,
+                isin_to_ticker=mapping,
+                as_of=args.as_of or None,
+                panel_tickers=panel,
+            )
+            written = None
+            if args.write_holdings:
+                # только CLI data/portfolio/holdings.json — не пути аналитика
+                to_save = {
+                    "as_of": holdings.get("as_of"),
+                    "cash": holdings.get("cash", 0.0),
+                    "positions": holdings.get("positions", []),
+                }
+                written = str(save_holdings(to_save))
+                holdings["written_path"] = written
+        finish_run(
+            run["run_id"],
+            status="ok",
+            result={
+                "n_positions": len(holdings.get("positions", [])),
+                "file_status": holdings.get("file_status"),
+                "written_path": written,
+            },
+        )
+        _print_json(holdings)
+        return 0
+    except PipelineLockError as e:
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
+        return 3
+    except (PortfolioAdapterError, HoldingsValidationError, OSError, json.JSONDecodeError) as e:
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
+        return 2
+    except Exception as e:  # noqa: BLE001
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
+        return 1
+
+
 def cmd_ingest_events(args: argparse.Namespace) -> int:
     """Принять JSON-события радара/inbox.
 
@@ -490,6 +546,29 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_show = sub.add_parser("show-portfolio", help="Show holdings JSON (empty OK)")
     p_show.set_defaults(func=cmd_show_portfolio)
+
+    p_adp = sub.add_parser(
+        "adapt-portfolio",
+        help="Adapt analyst CSV → holdings JSON (read-only unless --write-holdings)",
+    )
+    p_adp.add_argument("--csv", required=True, help="Path to analyst portfolio CSV")
+    p_adp.add_argument(
+        "--isin-map",
+        default="",
+        help="Optional JSON map {ISIN: ticker} for unambiguous resolution",
+    )
+    p_adp.add_argument("--as-of", default="", help="Optional as_of date for holdings")
+    p_adp.add_argument(
+        "--panel-tickers",
+        default="",
+        help="Comma-separated tickers in price panel (flags missing_from_panel)",
+    )
+    p_adp.add_argument(
+        "--write-holdings",
+        action="store_true",
+        help="Write data/portfolio/holdings.json (never writes /workspace/invest)",
+    )
+    p_adp.set_defaults(func=cmd_adapt_portfolio)
 
     p_val = sub.add_parser("validate-data", help="Validate active price source freshness")
     p_val.add_argument(

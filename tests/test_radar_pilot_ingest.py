@@ -22,19 +22,22 @@ def event_dirs(tmp_path, monkeypatch):
     rejected = tmp_path / "rejected"
     archive = tmp_path / "archive"
     batches = tmp_path / "batches"
-    for d in (inbox, processed, rejected, archive, batches):
+    history = tmp_path / "history"
+    for d in (inbox, processed, rejected, archive, batches, history):
         d.mkdir()
     monkeypatch.setattr("moex_portfolio.events.INBOX_DIR", inbox)
     monkeypatch.setattr("moex_portfolio.events.PROCESSED_DIR", processed)
     monkeypatch.setattr("moex_portfolio.events.REJECTED_DIR", rejected)
     monkeypatch.setattr("moex_portfolio.events.INBOX_ARCHIVE_DIR", archive)
     monkeypatch.setattr("moex_portfolio.events.BATCH_META_DIR", batches)
+    monkeypatch.setattr("moex_portfolio.events.HISTORY_DIR", history)
     return {
         "inbox": inbox,
         "processed": processed,
         "rejected": rejected,
         "archive": archive,
         "batches": batches,
+        "history": history,
         "root": tmp_path,
     }
 
@@ -77,7 +80,7 @@ def test_pilot_package_accepts_radar_types_and_skips_semantics(event_dirs):
     assert gazp["event_type"] == "financial_statements_ras"
 
     statuses = {d["status"] for d in report["details"]}
-    assert "skipped_duplicate_of" in statuses
+    assert "skipped_novelty_duplicate" in statuses
     assert "skipped_materiality_ignore" in statuses
 
 
@@ -99,7 +102,7 @@ def test_pilot_redelivery_no_dupes_no_source_loss(event_dirs):
     assert n1 == n2 == 4
 
 
-def test_conflict_does_not_overwrite_processed(event_dirs):
+def test_identity_mismatch_does_not_overwrite_processed(event_dirs):
     existing = {
         "event_id": "EV-20261009-SBER-001",
         "event_type": "dividend_recommendation",
@@ -107,11 +110,14 @@ def test_conflict_does_not_overwrite_processed(event_dirs):
         "url": "https://example.invalid/old",
         "published_at": "2026-10-01T00:00:00+03:00",
         "source": "x",
+        "ticker": "SBER",
+        "event_date": "2026-10-09",
+        "isin": "RU0009029540",
     }
     (event_dirs["processed"] / "EV-20261009-SBER-001.json").write_text(
         json.dumps(existing), encoding="utf-8"
     )
-    # один конфликтный event
+    # тот же event_id, но другой ticker → EVENT_IDENTITY_MISMATCH
     payload = {
         "schema_version": "1.1",
         "generated_at": "2026-10-10T11:28:52+03:00",
@@ -122,12 +128,14 @@ def test_conflict_does_not_overwrite_processed(event_dirs):
         "sources_checked": [],
         "events": [
             {
-                **existing,
+                "event_id": "EV-20261009-SBER-001",
+                "event_type": "dividend_recommendation",
                 "title": "NEW DIFFERENT",
                 "url": "https://example.invalid/new",
                 "issuer_name": "X",
-                "ticker": "SBER",
+                "ticker": "GAZP",
                 "isin": "RU0009029540",
+                "published_at": "2026-10-01T00:00:00+03:00",
                 "event_date": "2026-10-09",
                 "source_name": "x",
                 "source_url": "https://example.invalid/new",
@@ -152,6 +160,7 @@ def test_conflict_does_not_overwrite_processed(event_dirs):
     assert report["conflict"] == 1
     assert report["rejected"] == 1
     assert report["partial"] is True
+    assert report["details"][0]["error"] == "EVENT_IDENTITY_MISMATCH"
     saved = json.loads(
         (event_dirs["processed"] / "EV-20261009-SBER-001.json").read_text(encoding="utf-8")
     )
@@ -169,7 +178,17 @@ def test_cli_ingest_source_partial_exit(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("moex_portfolio.events.REJECTED_DIR", tmp_path / "rejected")
     monkeypatch.setattr("moex_portfolio.events.INBOX_ARCHIVE_DIR", tmp_path / "archive")
     monkeypatch.setattr("moex_portfolio.events.BATCH_META_DIR", tmp_path / "batches")
-    for d in ("inbox", "processed", "rejected", "archive", "batches", "runs", "locks"):
+    monkeypatch.setattr("moex_portfolio.events.HISTORY_DIR", tmp_path / "history")
+    for d in (
+        "inbox",
+        "processed",
+        "rejected",
+        "archive",
+        "batches",
+        "history",
+        "runs",
+        "locks",
+    ):
         (tmp_path / d).mkdir()
 
     bad = {

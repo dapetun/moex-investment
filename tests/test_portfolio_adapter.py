@@ -1,0 +1,57 @@
+"""Тесты адаптера CSV аналитика → holdings.json."""
+
+from pathlib import Path
+
+import pytest
+
+from moex_portfolio.portfolio_adapter import (
+    PortfolioAdapterError,
+    adapt_analyst_csv,
+    holdings_for_compare,
+    resolve_ticker,
+)
+
+FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "synthetic_analyst_portfolio.csv"
+)
+
+
+def test_adapt_synthetic_csv():
+    h = adapt_analyst_csv(FIXTURE, panel_tickers={"TSTA", "TSTB", "TSTC", "AAA"})
+    assert h["file_status"] == "ok" or h["adapter"]["file_status"] == "ok"
+    assert len(h["positions"]) == 3
+    assert abs(sum(p["weight"] for p in h["positions"]) - 1.0) < 1e-6
+    assert h["adapter"]["cash_in_weight_sum"] is False
+    assert h["adapter"]["missing_from_panel"] == []
+    w = holdings_for_compare(h)
+    assert set(w) == {"TSTA", "TSTB", "TSTC"}
+
+
+def test_missing_from_panel_flagged():
+    h = adapt_analyst_csv(FIXTURE, panel_tickers={"TSTA"})
+    assert set(h["adapter"]["missing_from_panel"]) == {"TSTB", "TSTC"}
+
+
+def test_ambiguous_isin_without_map_raises(tmp_path):
+    p = tmp_path / "p.csv"
+    p.write_text("isin,weight\nRU00TEST9999,1.0\n", encoding="utf-8")
+    with pytest.raises(PortfolioAdapterError, match="PORTFOLIO_ID_AMBIGUOUS"):
+        adapt_analyst_csv(p)
+
+
+def test_isin_map_resolves(tmp_path):
+    p = tmp_path / "p.csv"
+    p.write_text("isin,weight\nRU00TEST0001,1.0\n", encoding="utf-8")
+    h = adapt_analyst_csv(p, isin_to_ticker={"RU00TEST0001": "TSTA"})
+    assert h["positions"][0]["ticker"] == "TSTA"
+
+
+def test_resolve_ticker_prefers_secid_over_csv_ticker():
+    # облигация: CSV ticker ≠ secid — ключ CLI = secid (RESULT 1936)
+    assert (
+        resolve_ticker(
+            {"ticker": "TSTA-BO1", "secid": "RU00TEST0004", "isin": "RU00TEST0004"}
+        )
+        == "RU00TEST0004"
+    )
+    assert resolve_ticker({"secid": "SBER", "isin": "RU0009029540"}) == "SBER"

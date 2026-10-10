@@ -39,24 +39,31 @@ pip install -e ".[dev]"
 ## 2. Каталоги на машине бота
 
 ```
-data/portfolio/holdings.json     # факт. позиции (может отсутствовать → пустой)
+data/portfolio/holdings.json     # канон CLI; нет файла → file_status=missing
+data/portfolio/PORTFOLIO_CONTRACT.md
 data/fixtures/synthetic_prices.csv
 data/cache/                      # runtime cache (gitignore)
-data/inbox/events/               # пишет бот №1
-data/processed/events/           # принятые события
-data/outbox/runs/                # journal
+data/inbox/events/               # копии для ingest (--source)
+data/processed/events/           # принятые события (current)
+data/processed/events_history/   # предыдущие версии при updated
+data/outbox/runs/                # journal (UTC run_id)
 data/outbox/reports/             # MD+JSON
 data/outbox/last_target.json     # последний target после optimize
 data/locks/                      # pipeline.lock
 ```
 
 Скопируйте пример: `data/portfolio/holdings.example.json` → `holdings.json`.
+Контракт портфеля: `data/portfolio/PORTFOLIO_CONTRACT.md`.
+CSV аналитика (`/workspace/invest/portfolio/portfolio.csv`) — только через
+`adapt-portfolio --csv …` (по умолчанию без записи; `--write-holdings` пишет
+только CLI holdings).
 
 ### Holdings: ограничение весов (MVP)
 
 `compare` и вывод текущих весов требуют **явного** поля `weight` у каждой позиции.
 Позиции только с `shares` без `weight` дают машиночитаемую ошибку
 `HOLDINGS_SHARES_WITHOUT_WEIGHTS` — веса не выдумываются.
+`cash` не входит в сумму весов. `file_status`: `missing` | `empty` | `ok`.
 Будущая задача: рыночные веса = shares × цены (после clearance источника котировок).
 
 Перед `optimize` всегда выполняется QC данных. Для `fixture` календарная
@@ -68,6 +75,9 @@ data/locks/                      # pipeline.lock
 
 ```bash
 python -m moex_portfolio show-portfolio
+# опционально: CSV аналитика → JSON (не трогает /workspace/invest без --write-holdings):
+# python -m moex_portfolio adapt-portfolio --csv tests/fixtures/synthetic_analyst_portfolio.csv \
+#   --panel-tickers AAA,BBB,CCC
 python -m moex_portfolio update-data
 python -m moex_portfolio validate-data --max-staleness-days 5
 # мост радар → CLI (оригинал /workspace/invest/... не удаляется):
@@ -80,13 +90,14 @@ python -m moex_portfolio report --run-id <run_id>
 ```
 
 Коды выхода: `0` ok, `1` непредвиденная ошибка / missing run, `2` бизнес/валидация
-(включая **частичный** отказ ingest: `partial=true`), `3` lock занят,
-`4` источник заблокирован (ISS).
+(включая **частичный** отказ ingest: `partial=true`; JSON тогда в **stderr**),
+`3` lock занят, `4` источник заблокирован (ISS). Журнал/run_id — UTC.
 
 Радар пишет только в `/workspace/invest/news/`. CLI читает
 `<repo>/data/inbox/events/`. Без шага `--source` (или ручного копирования)
 события не появятся. После ingest исходник из inbox архивируется в
-`data/processed/inbox_archive/`.
+`data/processed/inbox_archive/`. Повторная оценка того же события → `updated`
+(+ `events_history/`), не автоматический `EVENT_CONFLICT`.
 
 `optimize` без `--allow-optimize` отказывается работать.
 

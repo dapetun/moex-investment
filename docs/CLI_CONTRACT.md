@@ -6,7 +6,8 @@
 
 | Команда | Назначение | Успех | Типичные ошибки |
 |---|---|---|---|
-| `show-portfolio` | holdings JSON (пустой OK) | 0 | 1/3 |
+| `show-portfolio` | holdings JSON + `file_status` | 0 | 1/3 |
+| `adapt-portfolio --csv` | CSV аналитика → holdings (read-only) | 0 | 2 adapter/validation |
 | `validate-data` | QC активной панели | 0 | 2 QC fail, 4 source blocked |
 | `update-data` | fixture → runtime cache | 0 | 4 ISS/market blocked |
 | `optimize --allow-optimize` | Max Sharpe + QC | 0 | 2 QC/solver/params, 4 source |
@@ -21,10 +22,12 @@
 
 ```
 /workspace/invest/news/events_latest.json   # канон радара (вне репо)
-data/portfolio/holdings.json
+data/portfolio/holdings.json                # канон CLI (см. PORTFOLIO_CONTRACT.md)
+data/portfolio/PORTFOLIO_CONTRACT.md
 data/fixtures/synthetic_prices.csv
 data/inbox/events/*.json                    # копии для ingest (--source)
 data/processed/events/*.json
+data/processed/events_history/*.json        # предыдущие версии при updated
 data/processed/rejected/*.json
 data/processed/inbox_archive/*.json         # сохранённые исходники inbox
 data/processed/batches/*.json               # мета обёртки выпуска
@@ -48,18 +51,30 @@ data/locks/pipeline.lock
 - Пустой current + непустой target → `allocation_kind=initial_allocation`
   (`needs_rebalance=false`, `needs_action` по drift).
 - Holdings: явные `weight`; shares-only → `HOLDINGS_SHARES_WITHOUT_WEIGHTS`.
+- `file_status=missing` ≠ пустой файл (`empty`); оба дают `positions: []` для весов.
+
+## Портфель
+
+См. `data/portfolio/PORTFOLIO_CONTRACT.md`. Адаптер CSV → holdings не пишет в
+`/workspace/invest`. `--write-holdings` пишет только `data/portfolio/holdings.json`.
 
 ## События радара
 
-См. `data/inbox/events/RADAR_CONTRACT.md`.
-Фикстуры: `tests/fixtures/radar_events_latest_v1_1_pilot.json` (форма пилота),
+См. `data/inbox/events/RADAR_CONTRACT.md` (refs: `cur-20261010-1713`, `1820`, `1936`).
+Фикстуры: `tests/fixtures/radar_events_latest_v1_1_pilot.json` (синтетическая форма
+пилота, не байт-копия боевого выпуска),
 `tests/fixtures/radar_batch_sample.json` (legacy batch).
 
 - Канон выпуска: `/workspace/invest/news/events_latest.json` (schema 1.1).
 - Мост: `ingest-events --source <path>` (оригинал не удаляется; inbox → archive).
-- Типы: allowlist радара (24 + `put_offer_announced`/`unknown`); не маппить в выдуманные `disclosure_*`.
-- Оценки: `equity_assessment` / `bond_assessment` сохраняются.
-- `partial=true` и exit **2**, если есть reject/conflict; смотреть `details[]` (`event_id`).
+- Типы: union equity_rules + bond_rules.start (39) + `unknown` (RESULT 1936);
+  не маппить в выдуманные `disclosure_*`.
+- `published_at: "unknown"` → reject (`PUBLISHED_AT_INVALID`).
+- Оценки: `equity_assessment` / `bond_assessment` сохраняются; повторная оценка
+  при том же `event_id` и жёсткой согласованности → `updated` (+ history);
+  hard mismatch → `EVENT_IDENTITY_MISMATCH`; старый batch → `stale_skipped`.
+- `partial=true` и exit **2**, если есть reject/conflict; JSON тогда в **stderr**;
+  смотреть `details[]` (`event_id`, `changed_fields` для updates).
 
 ## Ограничения
 

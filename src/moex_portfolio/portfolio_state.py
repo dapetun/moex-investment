@@ -22,19 +22,26 @@ logger = logging.getLogger(__name__)
 
 HOLDINGS_DIR = DATA_DIR / "portfolio"
 HOLDINGS_FILENAME = "holdings.json"
-WEIGHT_SUM_TOLERANCE = 1e-6
+# Единый допуск с analysis_spec аналитика (±0.005), RESULT cur-20261010-1936 §1.2d.
+WEIGHT_SUM_TOLERANCE = 5e-3
 
 
 class HoldingsValidationError(ValueError):
     """Некорректная структура или содержимое holdings."""
 
 
-def empty_holdings() -> dict[str, Any]:
-    """Пустая конфигурация портфеля."""
+def empty_holdings(*, file_status: str = "empty") -> dict[str, Any]:
+    """Пустая конфигурация портфеля.
+
+    ``file_status``:
+    - ``empty`` — файл есть (или явное пустое состояние), позиций нет;
+    - ``missing`` — файла нет (не путать с пустым портфелем).
+    """
     return {
         "as_of": None,
         "cash": 0.0,
         "positions": [],
+        "file_status": file_status,
     }
 
 
@@ -122,10 +129,14 @@ def _normalize(data: dict[str, Any]) -> dict[str, Any]:
     if cash is None:
         cash = 0.0
 
+    status = data.get("file_status")
+    if status not in {"ok", "empty", "missing"}:
+        status = "ok" if positions else "empty"
     return {
         "as_of": data.get("as_of"),
         "cash": float(cash),
         "positions": positions,
+        "file_status": status,
     }
 
 
@@ -146,15 +157,25 @@ def save_holdings(data: dict[str, Any], path: Path | None = None) -> Path:
 
 
 def load_holdings(path: Path | None = None) -> dict[str, Any]:
-    """Загрузить holdings. Если файла нет — вернуть пустой портфель."""
+    """Загрузить holdings.
+
+    Файл отсутствует → ``file_status=missing`` (позиции []).
+    Файл с пустыми positions → ``file_status=empty``.
+    Непустой портфель → ``file_status=ok``.
+    """
     target = path or holdings_path()
     if not target.exists():
-        logger.info("Holdings file missing, returning empty: %s", target)
-        return empty_holdings()
+        logger.info("Holdings file missing (status=missing): %s", target)
+        return empty_holdings(file_status="missing")
 
     raw = json.loads(target.read_text(encoding="utf-8"))
     validate_holdings(raw)
-    return _normalize(raw)
+    normalized = _normalize(raw)
+    if not normalized["positions"]:
+        normalized["file_status"] = "empty"
+    else:
+        normalized["file_status"] = "ok"
+    return normalized
 
 
 def weights_from_holdings(data: dict[str, Any]) -> dict[str, float]:

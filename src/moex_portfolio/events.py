@@ -3,6 +3,10 @@
 Канон радара (подтверждено Grok Bot, schema_version 1.1):
 ``/workspace/invest/news/events_latest.json`` — см. data/inbox/events/RADAR_CONTRACT.md.
 CLI не подменяет типы радара на выдуманные ``disclosure_*``.
+
+Повторная оценка того же события (тот же event_id + идентичность) принимается
+как новая версия: предыдущая копия уходит в history, current обновляется.
+EVENT_CONFLICT — только при смене идентичности или если её нельзя подтвердить.
 """
 
 from __future__ import annotations
@@ -12,7 +16,8 @@ import json
 import logging
 import re
 import shutil
-from datetime import datetime, timezone
+import tempfile
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 INBOX_DIR = DATA_DIR / "inbox" / "events"
 PROCESSED_DIR = DATA_DIR / "processed" / "events"
+HISTORY_DIR = DATA_DIR / "processed" / "events_history"
 REJECTED_DIR = DATA_DIR / "processed" / "rejected"
 INBOX_ARCHIVE_DIR = DATA_DIR / "processed" / "inbox_archive"
 BATCH_META_DIR = DATA_DIR / "processed" / "batches"
@@ -30,7 +36,7 @@ REQUIRED_FIELDS = ("event_type", "title", "url", "published_at", "source")
 LEGACY_PREFIXES = ("disclosure_", "dividend_")
 
 # Ключи settings.yaml → equity_rules (+ bond_rules.start), подтверждены RESULT радара.
-RADAR_EVENT_TYPES: frozenset[str] = frozenset(
+EQUITY_EVENT_TYPES: frozenset[str] = frozenset(
     {
         "default_or_technical_default",
         "sanctions_or_regulatory_ban",
@@ -56,10 +62,33 @@ RADAR_EVENT_TYPES: frozenset[str] = frozenset(
         "market_technical_notice",
         "press_release_marketing",
         "noise_holiday_award_charity",
-        "put_offer_announced",
         "unknown",
     }
 )
+
+# bond_rules.start — только bond-only ключи (RESULT cur-20261010-1936 §2.2).
+# Пересечения с equity_rules уже в EQUITY_EVENT_TYPES.
+BOND_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        "coupon_payment_missed_or_delayed",
+        "coupon_payment_regular",
+        "principal_redemption_scheduled",
+        "put_offer_announced",
+        "call_offer_early_redemption",
+        "rating_action_downgrade",
+        "rating_action_upgrade",
+        "rating_action_affirmed",
+        "issue_terms_change",
+        "covenant_breach_or_waiver",
+        "collateral_or_guarantee_change",
+        "leverage_change_material",
+        "liquidity_stress",
+        "refinancing_risk",
+        "dividend_large",
+    }
+)
+
+RADAR_EVENT_TYPES: frozenset[str] = EQUITY_EVENT_TYPES | BOND_EVENT_TYPES
 
 # Только для legacy CLI-формата (не радар). Не переписываем типы радара.
 EVENT_TYPE_ALIASES: dict[str, str] = {
@@ -88,6 +117,49 @@ BATCH_META_KEYS = (
     "is_test",
     "notes",
     "sources_checked",
+)
+
+# Первичный ключ upsert — event_id (RESULT 1936 §3.3).
+# Жёсткая согласованность: смена → EVENT_IDENTITY_MISMATCH.
+HARD_IDENTITY_KEYS = (
+    "ticker",
+    "isin",
+    "event_type",
+    "event_date",
+    "issuer_name",
+)
+# Мягкие поля: смена при том же event_id → ревизия с флагом, не conflict.
+SOFT_REVISION_KEYS = (
+    "document_url",
+    "source_url",
+    "published_at",
+    "url",
+)
+
+# Поля, изменение которых при той же идентичности = ревизия (update), не conflict.
+_CONTENT_COMPARE_KEYS = (
+    "event_type",
+    "title",
+    "url",
+    "published_at",
+    "source",
+    "company",
+    "summary",
+    "facts",
+    "equity_assessment",
+    "bond_assessment",
+    "equity_score",
+    "bond_score",
+    "scores",
+    "materiality",
+    "direction",
+    "time_horizon",
+    "impact_rationale",
+    "duplicate_of",
+    "novelty",
+    "priority_reason",
+    "validation_status",
+    "revision",
 )
 
 
@@ -120,6 +192,42 @@ def canonicalize_event_type(value: Any) -> str:
         f"unmapped event_type {value!r}; not in RADAR_EVENT_TYPES and not a "
         f"legacy disclosure_*/dividend_* type (code=EVENT_TYPE_UNMAPPED)"
     )
+
+
+def parse_published_at(value: Any) -> str:
+    """Требовать ISO date или datetime; ``unknown``/пусто — reject.
+
+    Не подменяет дату публикации датой события.
+    """
+    if value is None:
+        raise EventValidationError(
+            "missing published_at; require ISO date or datetime "
+            "(code=PUBLISHED_AT_INVALID)"
+        )
+    s = str(value).strip()
+    if not s or s.lower() in {"unknown", "null", "none", "n/a", "-"}:
+        raise EventValidationError(
+            f"invalid published_at {value!r}; require ISO date or datetime, "
+            f"not unknown/empty (code=PUBLISHED_AT_INVALID)"
+        )
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        try:
+            date.fromisoformat(s)
+        except ValueError as e:
+            raise EventValidationError(
+                f"invalid published_at date {value!r} (code=PUBLISHED_AT_INVALID)"
+            ) from e
+        return s
+    # datetime: допускаем Z и смещения
+    normalized = s.replace("Z", "+00:00") if s.endswith("Z") else s
+    try:
+        datetime.fromisoformat(normalized)
+    except ValueError as e:
+        raise EventValidationError(
+            f"invalid published_at {value!r}; require ISO date or datetime "
+            f"(code=PUBLISHED_AT_INVALID)"
+        ) from e
+    return s
 
 
 def extract_event_list(raw: Any) -> list[dict[str, Any]]:
@@ -184,10 +292,14 @@ def normalize_event(
                 out["published_at"] = raw[key]
                 out["published_at_fallback_from"] = key
                 break
+        # Не подставляем event_date в published_at молча — только явный fallback
+        # для legacy без publication; валидатор всё равно проверит ISO.
         if not out.get("published_at") and raw.get("event_date"):
-            # только если publication отсутствует — с явной меткой
             out["published_at"] = raw["event_date"]
             out["published_at_fallback_from"] = "event_date"
+
+    if out.get("published_at") is not None:
+        out["published_at"] = parse_published_at(out["published_at"])
 
     if not out.get("title"):
         summary = out.get("summary") or raw.get("factual_summary")
@@ -227,6 +339,10 @@ def normalize_event(
         "confidence",
         "data_origin",
         "is_test",
+        "revision",
+        "impact_rationale",
+        "priority_reason",
+        "ticker",
     ):
         if score_key in raw:
             out[score_key] = raw[score_key]
@@ -246,6 +362,8 @@ def validate_event(event: dict[str, Any]) -> None:
         val = event.get(field)
         if val is None or (isinstance(val, str) and not str(val).strip()):
             raise EventValidationError(f"missing required field: {field}")
+
+    parse_published_at(event["published_at"])
 
     et = str(event["event_type"])
     if et in RADAR_EVENT_TYPES:
@@ -282,28 +400,126 @@ def stable_event_filename(event: dict[str, Any]) -> str:
     return f"evt_{digest}.json"
 
 
+def _norm_id_field(key: str, value: Any) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s or s.lower() in {"null", "none", "unknown", ""}:
+        return None
+    if key in {"ticker", "isin", "event_type"}:
+        return s.upper() if key != "event_type" else s.lower()
+    return s
+
+
+def _field_from_event(event: dict[str, Any], key: str) -> Any:
+    if event.get(key) is not None:
+        return event.get(key)
+    orig = event.get("radar_original")
+    if isinstance(orig, dict) and orig.get(key) is not None:
+        return orig.get(key)
+    aliases = {
+        "issuer_name": ("company",),
+        "source_url": ("url", "source"),
+    }
+    for alt in aliases.get(key, ()):
+        if event.get(alt) is not None:
+            return event.get(alt)
+    return None
+
+
+def hard_identity_mismatch(
+    existing: dict[str, Any], incoming: dict[str, Any]
+) -> list[str]:
+    """Поля жёсткой согласованности, разошедшиеся при том же event_id."""
+    mismatched: list[str] = []
+    for key in HARD_IDENTITY_KEYS:
+        va = _norm_id_field(key, _field_from_event(existing, key))
+        vb = _norm_id_field(key, _field_from_event(incoming, key))
+        if va is None or vb is None:
+            continue
+        if va != vb:
+            mismatched.append(key)
+    return mismatched
+
+
+def soft_identity_flags(
+    existing: dict[str, Any], incoming: dict[str, Any]
+) -> list[str]:
+    """Мягкие поля, изменившиеся при ревизии (флаг, не conflict)."""
+    changed: list[str] = []
+    for key in SOFT_REVISION_KEYS:
+        va = _norm_id_field(key, _field_from_event(existing, key))
+        vb = _norm_id_field(key, _field_from_event(incoming, key))
+        if va is None and vb is None:
+            continue
+        if va != vb:
+            changed.append(key)
+    return changed
+
+
 def _events_equivalent(a: dict[str, Any], b: dict[str, Any]) -> bool:
-    """Сравнение существенных полей (без radar_original для стабильности)."""
+    """Полное совпадение существенных полей (точный повтор пакета)."""
     keys = (
-        "event_id",
-        "event_type",
-        "title",
-        "url",
-        "published_at",
-        "source",
-        "ticker",
-        "company",
-        "summary",
-        "facts",
-        "equity_assessment",
-        "bond_assessment",
-        "equity_score",
-        "bond_score",
-        "scores",
-        "materiality",
-        "duplicate_of",
+        ("event_id",)
+        + HARD_IDENTITY_KEYS
+        + SOFT_REVISION_KEYS
+        + _CONTENT_COMPARE_KEYS
     )
     return all(a.get(k) == b.get(k) for k in keys)
+
+
+def _content_diff_keys(existing: dict[str, Any], incoming: dict[str, Any]) -> list[str]:
+    changed: list[str] = []
+    for key in _CONTENT_COMPARE_KEYS:
+        if existing.get(key) != incoming.get(key):
+            changed.append(key)
+    return changed
+
+
+def _revision_number(event: dict[str, Any]) -> int | None:
+    rev = event.get("revision")
+    if isinstance(rev, dict) and rev.get("number") is not None:
+        try:
+            return int(rev["number"])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _batch_generated_at(event: dict[str, Any]) -> str | None:
+    batch = event.get("radar_batch")
+    if isinstance(batch, dict):
+        g = batch.get("generated_at")
+        if g is not None and str(g).strip():
+            return str(g).strip()
+    return None
+
+
+def freshness_allows_update(
+    existing: dict[str, Any], incoming: dict[str, Any]
+) -> tuple[bool, str, bool]:
+    """Можно ли принять incoming поверх existing по свежести.
+
+    Returns:
+        (allowed, reason, freshness_guaranteed)
+    """
+    er = _revision_number(existing)
+    ir = _revision_number(incoming)
+    if er is not None and ir is not None:
+        if ir < er:
+            return False, f"stale_revision:{ir}<{er}", True
+        return True, f"revision:{ir}>={er}", True
+
+    eg = _batch_generated_at(existing)
+    ig = _batch_generated_at(incoming)
+    if eg and ig:
+        if ig < eg:
+            return False, f"stale_batch:{ig}<{eg}", True
+        return True, f"batch_generated_at:{ig}>={eg}", True
+
+    # Нет строгой метки свежести на уровне события — не блокируем ревизию,
+    # но не заявляем гарантию порядка.
+    return True, "freshness_unknown", False
 
 
 def _write_json(path: Path, data: Any) -> None:
@@ -314,24 +530,66 @@ def _write_json(path: Path, data: Any) -> None:
     )
 
 
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Записать JSON атомарно (temp + replace), без потери прежнего файла."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.stem}_", suffix=".tmp", dir=str(path.parent)
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with open(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2, default=str)
+            fh.write("\n")
+        tmp_path.replace(path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _archive_history(existing: dict[str, Any], dest_name: str) -> Path:
+    """Сохранить предыдущую версию до обновления current."""
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stem = Path(dest_name).stem
+    hist = HISTORY_DIR / f"{stem}__{stamp}.json"
+    _atomic_write_json(hist, existing)
+    return hist
+
+
 def _archive_inbox_file(path: Path) -> Path:
     """Сохранить исходный inbox-файл до удаления из inbox."""
     INBOX_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     dest = INBOX_ARCHIVE_DIR / f"{path.stem}__{stamp}{path.suffix}"
+    # уникальность внутри секунды
+    if dest.exists():
+        dest = INBOX_ARCHIVE_DIR / f"{path.stem}__{stamp}_{os_getpid()}{path.suffix}"
     shutil.copy2(path, dest)
     return dest
 
 
+def os_getpid() -> int:
+    import os
+
+    return os.getpid()
+
+
 def _should_skip_radar_semantics(item: dict[str, Any]) -> tuple[str, str] | None:
-    """Пропуски по семантике радара (не reject): duplicate_of / ignore / novelty."""
-    dup = item.get("duplicate_of")
-    if dup is not None and str(dup).strip() and str(dup).lower() not in {"null", "none"}:
-        return "skipped_duplicate_of", f"duplicate_of={dup}"
-    if str(item.get("novelty") or "").lower() == "duplicate":
-        return "skipped_novelty_duplicate", "novelty=duplicate"
+    """Пропуски по семантике радара (не reject).
+
+    ``novelty=clarification`` с ``duplicate_of`` — не skip (RESULT 1936 §3.3):
+    это уточнение, не дубль. Skip только ``novelty=duplicate`` и
+    ``materiality=ignore``. Пустой ``duplicate_of`` без novelty=duplicate
+    больше не отбрасывает событие.
+    """
+    novelty = str(item.get("novelty") or "").lower()
+    if novelty == "duplicate":
+        dup = item.get("duplicate_of")
+        return "skipped_novelty_duplicate", f"novelty=duplicate duplicate_of={dup}"
     if str(item.get("materiality") or "").lower() == "ignore":
         return "skipped_materiality_ignore", "materiality=ignore"
+    # materiality/novelty unknown — не skip и не downgrade в ignore/low
     return None
 
 
@@ -345,9 +603,13 @@ def ingest_events(
     ``source_path`` копируется в inbox без удаления оригинала (по умолчанию
     ``keep_source=True``). Файлы из inbox после обработки уходят в
     ``processed/inbox_archive/``, а не удаляются без следа.
+
+    Повтор event_id с той же идентичностью и изменившимися оценками →
+    ``updated`` (история + новая current). Смена идентичности → ``conflict``.
     """
     INBOX_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     REJECTED_DIR.mkdir(parents=True, exist_ok=True)
     INBOX_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     BATCH_META_DIR.mkdir(parents=True, exist_ok=True)
@@ -364,8 +626,10 @@ def ingest_events(
             src.unlink(missing_ok=True)
 
     accepted = 0
+    updated = 0
     rejected = 0
     duplicate_skipped = 0
+    stale_skipped = 0
     conflict = 0
     skipped_semantics = 0
     details: list[dict[str, Any]] = []
@@ -431,13 +695,112 @@ def ingest_events(
                             }
                         )
                         continue
+
+                    eid_a = _norm_id_field("event_id", existing.get("event_id"))
+                    eid_b = _norm_id_field("event_id", event.get("event_id"))
+                    same_id = bool(eid_a and eid_b and eid_a == eid_b)
+
+                    if same_id:
+                        hard_mis = hard_identity_mismatch(existing, event)
+                        if hard_mis:
+                            conflict += 1
+                            rejected += 1
+                            rej = (
+                                REJECTED_DIR
+                                / f"{dest.stem}__conflict__{path.stem}_{idx}.json"
+                            )
+                            _write_json(
+                                rej,
+                                {
+                                    "error": "hard identity fields diverged for same "
+                                    "event_id",
+                                    "code": "EVENT_IDENTITY_MISMATCH",
+                                    "mismatched_fields": hard_mis,
+                                    "dest": dest_name,
+                                    "incoming": event,
+                                },
+                            )
+                            details.append(
+                                {
+                                    "file": path.name,
+                                    "index": idx,
+                                    "event_id": event.get("event_id"),
+                                    "dest": dest_name,
+                                    "status": "conflict",
+                                    "error": "EVENT_IDENTITY_MISMATCH",
+                                    "mismatched_fields": hard_mis,
+                                }
+                            )
+                            continue
+
+                        allowed, fresh_reason, guaranteed = freshness_allows_update(
+                            existing, event
+                        )
+                        if not allowed:
+                            # stale_skipped: не rejected (RESULT 1936 §3.4)
+                            stale_skipped += 1
+                            details.append(
+                                {
+                                    "file": path.name,
+                                    "index": idx,
+                                    "event_id": event.get("event_id"),
+                                    "dest": dest_name,
+                                    "status": "stale_skipped",
+                                    "reason": fresh_reason,
+                                }
+                            )
+                            continue
+
+                        changed = _content_diff_keys(existing, event)
+                        soft_flags = soft_identity_flags(existing, event)
+                        try:
+                            hist_path = _archive_history(existing, dest_name)
+                            _atomic_write_json(dest, event)
+                        except OSError as e:
+                            rejected += 1
+                            details.append(
+                                {
+                                    "file": path.name,
+                                    "index": idx,
+                                    "event_id": event.get("event_id"),
+                                    "dest": dest_name,
+                                    "status": "rejected",
+                                    "error": f"update_write_failed: {e}",
+                                    "code": "EVENT_UPDATE_IO",
+                                }
+                            )
+                            logger.warning(
+                                "Failed to update event %s: %s", dest_name, e
+                            )
+                            continue
+
+                        updated += 1
+                        details.append(
+                            {
+                                "file": path.name,
+                                "index": idx,
+                                "event_id": event.get("event_id"),
+                                "dest": dest_name,
+                                "status": "updated",
+                                "changed_fields": changed,
+                                "soft_identity_changed": soft_flags,
+                                "history": str(hist_path),
+                                "freshness": fresh_reason,
+                                "freshness_guaranteed": guaranteed,
+                            }
+                        )
+                        continue
+
+                    # тот же файл без общего event_id (хэш-имя) или коллизия —
+                    # не перезаписываем
                     conflict += 1
                     rejected += 1
                     rej = REJECTED_DIR / f"{dest.stem}__conflict__{path.stem}_{idx}.json"
                     _write_json(
                         rej,
                         {
-                            "error": "processed event exists with different content",
+                            "error": "processed slot exists with different event_id "
+                            "or unconfirmed id",
                             "code": "EVENT_CONFLICT",
                             "dest": dest_name,
                             "incoming": event,
@@ -455,7 +818,7 @@ def ingest_events(
                     )
                     continue
 
-                _write_json(dest, event)
+                _atomic_write_json(dest, event)
                 accepted += 1
                 details.append(
                     {
@@ -497,14 +860,17 @@ def ingest_events(
     partial = rejected > 0
     return {
         "accepted": accepted,
+        "updated": updated,
         "rejected": rejected,
         "duplicate_skipped": duplicate_skipped,
+        "stale_skipped": stale_skipped,
         "conflict": conflict,
         "skipped_semantics": skipped_semantics,
         "partial": partial,
         "ok": not partial,
         "inbox": str(INBOX_DIR),
         "processed": str(PROCESSED_DIR),
+        "history": str(HISTORY_DIR),
         "inbox_archive": str(INBOX_ARCHIVE_DIR),
         "archives": archives,
         "source_path": str(source_path) if source_path else None,

@@ -49,6 +49,15 @@ def test_missing_file_returns_empty(tmp_path, monkeypatch):
     monkeypatch.setattr("moex_portfolio.portfolio_state.HOLDINGS_DIR", tmp_path)
     loaded = load_holdings()
     assert loaded["positions"] == []
+    assert loaded["file_status"] == "missing"
+
+
+def test_empty_file_status_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr("moex_portfolio.portfolio_state.HOLDINGS_DIR", tmp_path)
+    save_holdings(empty_holdings())
+    loaded = load_holdings()
+    assert loaded["positions"] == []
+    assert loaded["file_status"] == "empty"
 
 
 def test_invalid_weights_sum_raises():
