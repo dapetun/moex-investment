@@ -62,7 +62,7 @@ data/locks/pipeline.lock
 
 См. `data/inbox/events/RADAR_CONTRACT.md` (refs: `cur-20261010-1713`, `1820`, `1936`).
 Фикстуры: `tests/fixtures/radar_events_latest_v1_1_pilot.json` (синтетическая форма
-пилота, не байт-копия боевого выпуска),
+пилота, не байт-копия боевого выпуска; `event_id` = `TEST-EV-…`, `is_test: true`),
 `tests/fixtures/radar_batch_sample.json` (legacy batch).
 
 - Канон выпуска: `/workspace/invest/news/events_latest.json` (schema 1.1).

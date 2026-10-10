@@ -129,4 +129,8 @@ Legacy CLI: префиксы `disclosure_*` / `dividend_*` и короткие �
 
 - Форма пилота (синтетика, **не** байт-в-байт копия боевого выпуска):
   `tests/fixtures/radar_events_latest_v1_1_pilot.json`
+  — `is_test: true`, все `event_id` в namespace `TEST-EV-…`
+  (например `TEST-EV-20261009-SBER-001`), без пересечения с боевыми `EV-…`.
+  В JSON Schema `event_id` — строка без regex; префикс `TEST-` допустим
+  и не требует правки боевой схемы.
 - Упрощённый batch: `tests/fixtures/radar_batch_sample.json`

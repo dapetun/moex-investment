@@ -5,7 +5,7 @@
   "coverage_to": "2026-10-10T11:28:52+03:00",
   "generated_by": "corporate-radar-synthetic-pilot-shape",
   "is_test": true,
-  "notes": "Synthetic reconstruction of pilot release shape (6 events, types from Grok Bot RESULT). Not live market data.",
+  "notes": "Synthetic reconstruction of pilot release shape (6 events, types from Grok Bot RESULT). Not live market data. All event_id use TEST-EV- namespace to avoid collision with production EV- ids.",
   "sources_checked": [
     {
       "name": "synthetic-source",
@@ -18,7 +18,7 @@
   ],
   "events": [
     {
-      "event_id": "EV-20261009-SBER-001",
+      "event_id": "TEST-EV-20261009-SBER-001",
       "issuer_name": "ПАО Сбербанк (синтетика)",
       "ticker": "SBER",
       "isin": "RU0009029540",
@@ -64,7 +64,7 @@
       }
     },
     {
-      "event_id": "EV-20261009-SBER-002",
+      "event_id": "TEST-EV-20261009-SBER-002",
       "issuer_name": "ПАО Сбербанк (синтетика)",
       "ticker": "SBER",
       "isin": "RU0009029540",
@@ -83,7 +83,7 @@
       "document_url": "https://example.invalid/sber/div-002.pdf",
       "collected_at": "2026-10-10T10:05:00+03:00",
       "validation_status": "unverified",
-      "duplicate_of": "EV-20261009-SBER-001",
+      "duplicate_of": "TEST-EV-20261009-SBER-001",
       "novelty": "duplicate",
       "is_test": true,
       "data_origin": "synthetic",
@@ -110,7 +110,7 @@
       }
     },
     {
-      "event_id": "EV-20261008-GAZP-001",
+      "event_id": "TEST-EV-20261008-GAZP-001",
       "issuer_name": "ПАО Газпром (синтетика)",
       "ticker": "GAZP",
       "isin": "RU0007661625",
@@ -156,7 +156,7 @@
       }
     },
     {
-      "event_id": "EV-20261009-LKOH-001",
+      "event_id": "TEST-EV-20261009-LKOH-001",
       "issuer_name": "ПАО Лукойл (синтетика)",
       "ticker": "LKOH",
       "isin": "RU0009024277",
@@ -202,7 +202,7 @@
       }
     },
     {
-      "event_id": "EV-20261009-ROSN-001",
+      "event_id": "TEST-EV-20261009-ROSN-001",
       "issuer_name": "ПАО Роснефть (синтетика)",
       "ticker": "ROSN",
       "isin": "RU000A0J2Q06",
@@ -248,7 +248,7 @@
       }
     },
     {
-      "event_id": "EV-20261009-VTBR-001",
+      "event_id": "TEST-EV-20261009-VTBR-001",
       "issuer_name": "Банк ВТБ (синтетика)",
       "ticker": "VTBR",
       "isin": "RU000A0JP5V6",

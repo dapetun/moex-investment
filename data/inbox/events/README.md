@@ -24,4 +24,5 @@ python -m moex_portfolio ingest-events
 конфликт → `conflict` без перезаписи. `duplicate_of` / `materiality=ignore` →
 skip (не reject).
 
-Фикстура формы пилота: `tests/fixtures/radar_events_latest_v1_1_pilot.json`.
+Фикстура формы пилота: `tests/fixtures/radar_events_latest_v1_1_pilot.json`
+(`is_test: true`, `event_id` в namespace `TEST-EV-…`).

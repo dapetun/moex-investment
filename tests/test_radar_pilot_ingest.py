@@ -8,11 +8,29 @@ from pathlib import Path
 import pytest
 
 from moex_portfolio.cli import main
-from moex_portfolio.events import ingest_events, normalize_event
+from moex_portfolio.events import ingest_events, normalize_event, stable_event_filename
 
 PILOT = (
     Path(__file__).resolve().parent / "fixtures" / "radar_events_latest_v1_1_pilot.json"
 )
+
+# Боевые / production-shaped ID (в т.ч. прежние значения фикстуры до namespace).
+# Тестовая фикстура не должна пересекаться с этим множеством.
+KNOWN_PRODUCTION_EVENT_IDS = frozenset(
+    {
+        "EV-20261009-SBER-001",
+        "EV-20261009-SBER-002",
+        "EV-20261008-GAZP-001",
+        "EV-20261009-LKOH-001",
+        "EV-20261009-ROSN-001",
+        "EV-20261009-VTBR-001",
+        "EV-20261009-CHMF-001",
+        "EV-20260918-SBER-001",
+        "EV-20260918-LKOH-001",
+    }
+)
+
+TEST_EVENT_ID_PREFIX = "TEST-EV-"
 
 
 @pytest.fixture
@@ -65,7 +83,9 @@ def test_pilot_package_accepts_radar_types_and_skips_semantics(event_dirs):
     assert meta["is_test"] is True
 
     sber = json.loads(
-        (event_dirs["processed"] / "EV-20261009-SBER-001.json").read_text(encoding="utf-8")
+        (
+            event_dirs["processed"] / "TEST-EV-20261009-SBER-001.json"
+        ).read_text(encoding="utf-8")
     )
     assert sber["event_type"] == "dividend_recommendation"
     assert sber["equity_assessment"]["materiality"] == "high"
@@ -73,15 +93,31 @@ def test_pilot_package_accepts_radar_types_and_skips_semantics(event_dirs):
     assert sber["radar_batch"]["generated_at"] == "2026-10-10T11:28:52+03:00"
     assert "event_date" in sber
     assert sber["published_at"].startswith("2026-10-09")
+    assert sber["event_id"] == "TEST-EV-20261009-SBER-001"
 
     gazp = json.loads(
-        (event_dirs["processed"] / "EV-20261008-GAZP-001.json").read_text(encoding="utf-8")
+        (
+            event_dirs["processed"] / "TEST-EV-20261008-GAZP-001.json"
+        ).read_text(encoding="utf-8")
     )
     assert gazp["event_type"] == "financial_statements_ras"
 
     statuses = {d["status"] for d in report["details"]}
     assert "skipped_novelty_duplicate" in statuses
     assert "skipped_materiality_ignore" in statuses
+
+
+def test_pilot_event_ids_test_namespace_no_production_collision():
+    raw = json.loads(PILOT.read_text(encoding="utf-8"))
+    assert raw["is_test"] is True
+    ids = [e["event_id"] for e in raw["events"]]
+    assert ids
+    assert all(isinstance(i, str) and i.startswith(TEST_EVENT_ID_PREFIX) for i in ids)
+    assert not (set(ids) & KNOWN_PRODUCTION_EVENT_IDS)
+    # Имена processed-файлов тоже в тестовом namespace.
+    for eid in ids:
+        assert stable_event_filename({"event_id": eid}) == f"{eid}.json"
+        assert not eid.startswith("EV-")
 
 
 def test_pilot_redelivery_no_dupes_no_source_loss(event_dirs):
@@ -91,20 +127,28 @@ def test_pilot_redelivery_no_dupes_no_source_loss(event_dirs):
     r1 = ingest_events(source_path=src, keep_source=True)
     assert r1["accepted"] == 4
     n1 = len(list(event_dirs["processed"].glob("*.json")))
+    names1 = sorted(p.name for p in event_dirs["processed"].glob("*.json"))
 
     r2 = ingest_events(source_path=src, keep_source=True)
     assert r2["accepted"] == 0
     assert r2["duplicate_skipped"] == 4
+    assert r2["updated"] == 0
     assert r2["conflict"] == 0
     assert r2["rejected"] == 0
+    assert r2["ok"] is True
+    assert r2["partial"] is False
     assert src.exists()
     n2 = len(list(event_dirs["processed"].glob("*.json")))
+    names2 = sorted(p.name for p in event_dirs["processed"].glob("*.json"))
     assert n1 == n2 == 4
+    assert names1 == names2
+    assert all(n.startswith(TEST_EVENT_ID_PREFIX) for n in names1)
 
 
 def test_identity_mismatch_does_not_overwrite_processed(event_dirs):
+    eid = "TEST-EV-20261009-SBER-001"
     existing = {
-        "event_id": "EV-20261009-SBER-001",
+        "event_id": eid,
         "event_type": "dividend_recommendation",
         "title": "OLD",
         "url": "https://example.invalid/old",
@@ -114,7 +158,7 @@ def test_identity_mismatch_does_not_overwrite_processed(event_dirs):
         "event_date": "2026-10-09",
         "isin": "RU0009029540",
     }
-    (event_dirs["processed"] / "EV-20261009-SBER-001.json").write_text(
+    (event_dirs["processed"] / f"{eid}.json").write_text(
         json.dumps(existing), encoding="utf-8"
     )
     # тот же event_id, но другой ticker → EVENT_IDENTITY_MISMATCH
@@ -128,7 +172,7 @@ def test_identity_mismatch_does_not_overwrite_processed(event_dirs):
         "sources_checked": [],
         "events": [
             {
-                "event_id": "EV-20261009-SBER-001",
+                "event_id": eid,
                 "event_type": "dividend_recommendation",
                 "title": "NEW DIFFERENT",
                 "url": "https://example.invalid/new",
@@ -162,7 +206,7 @@ def test_identity_mismatch_does_not_overwrite_processed(event_dirs):
     assert report["partial"] is True
     assert report["details"][0]["error"] == "EVENT_IDENTITY_MISMATCH"
     saved = json.loads(
-        (event_dirs["processed"] / "EV-20261009-SBER-001.json").read_text(encoding="utf-8")
+        (event_dirs["processed"] / f"{eid}.json").read_text(encoding="utf-8")
     )
     assert saved["title"] == "OLD"
     assert list(event_dirs["archive"].glob("*.json"))
