@@ -70,7 +70,8 @@ python -m moex_portfolio ingest-events \
 | новый `event_id` | `accepted` | создаётся |
 | полный повтор той же версии | `duplicate_skipped` | без изменений |
 | тот же `event_id` + жёсткая согласованность + изменились оценки/содержание | `updated` | предыдущая → `events_history/`, затем новая current |
-| тот же `event_id`, разошлись ticker/isin/event_type/event_date/issuer | `conflict` / `EVENT_IDENTITY_MISMATCH` | **не** перезаписывается |
+| тот же `event_id`, разошлись ticker/isin/event_type/event_date | `conflict` / `EVENT_IDENTITY_MISMATCH` | **не** перезаписывается |
+| тот же `revision.number` и/`или` `generated_at`, другое содержимое | `conflict` / `EVENT_EQUAL_FRESHNESS_CONFLICT` | **не** перезаписывается |
 | более старый выпуск (`revision.number` или `radar_batch.generated_at`) | `stale_skipped` | current не трогаем; **не** rejected (exit 0) |
 
 **Первичный ключ:** только `event_id` (RESULT 1936).

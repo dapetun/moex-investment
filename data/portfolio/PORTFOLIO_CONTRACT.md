@@ -22,8 +22,10 @@ secid может быть `RU00TEST0004`). Порядок в адаптере:
 2. карта `--isin-map` / `isin_to_ticker`;
 3. CSV `ticker` только если secid нет.
 
-`isin`/`board`/`security_type` сохраняются в выводе адаптера (мета), даже если
-`save_holdings` их отбрасывает. Неоднозначность → `PORTFOLIO_ID_AMBIGUOUS`.
+`isin`/`board`/`security_type`/`account_label`/`notes→note` сохраняются в выводе
+адаптера. Битая строка или смешанные weight/shares → отказ всего файла
+(`PORTFOLIO_ROW_ERRORS` / `PORTFOLIO_MIXED_WEIGHTS`), без записи неполного
+holdings. Неоднозначность → `PORTFOLIO_ID_AMBIGUOUS`.
 
 ## 3. Веса
 
