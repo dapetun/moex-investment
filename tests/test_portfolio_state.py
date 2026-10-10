@@ -110,5 +110,5 @@ def test_weights_from_shares_without_prices_raises():
         "cash": 0.0,
         "positions": [{"ticker": "A", "shares": 10}],
     }
-    with pytest.raises(HoldingsValidationError):
+    with pytest.raises(HoldingsValidationError, match="HOLDINGS_SHARES_WITHOUT_WEIGHTS"):
         weights_from_holdings(data)

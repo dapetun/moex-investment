@@ -15,7 +15,7 @@ from typing import Any, Sequence
 
 from .compare import compare_weights
 from .config import DATA_DIR
-from .data_quality import validate_price_panel
+from .data_quality import validate_for_optimize
 from .data_sources import DataSourceError, FixtureDataSource, get_data_source
 from .events import ingest_events
 from .locks import PipelineLockError, pipeline_lock
@@ -26,6 +26,11 @@ from .run_journal import finish_run, load_run, start_run
 from .settings import get_data_source_name, iss_enabled, runtime_cache_path
 
 LAST_TARGET_PATH = DATA_DIR / "outbox" / "last_target.json"
+
+
+class TargetValidationError(ValueError):
+    """Целевой портфель непригоден для compare (нет success=true)."""
+
 
 logger = logging.getLogger(__name__)
 
@@ -87,11 +92,11 @@ def cmd_validate_data(args: argparse.Namespace) -> int:
         with pipeline_lock("pipeline"):
             src = get_data_source()
             df = src.load_prices()
-            report = validate_price_panel(
+            report = validate_for_optimize(
                 df,
+                source_name=src.name,
                 max_staleness_days=args.max_staleness_days,
             )
-            report["source"] = src.name
             report["iss_enabled"] = iss_enabled()
         code = 0 if report["ok"] else 2
         finish_run(
@@ -166,7 +171,10 @@ def cmd_update_data(_args: argparse.Namespace) -> int:
 
 
 def cmd_optimize(args: argparse.Namespace) -> int:
-    """Явный запуск оптимизации (требует --allow-optimize)."""
+    """Явный запуск оптимизации (требует --allow-optimize).
+
+    last_target.json перезаписывается только при success=true после QC.
+    """
     if not args.allow_optimize:
         _print_json(
             {
@@ -190,6 +198,37 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         with pipeline_lock("pipeline"):
             src = get_data_source()
             prices = src.load_prices()
+            qc = validate_for_optimize(
+                prices,
+                source_name=src.name,
+                max_staleness_days=args.max_staleness_days,
+            )
+            if not qc["ok"]:
+                payload = {
+                    "success": False,
+                    "error": "data quality check failed before optimize",
+                    "code": "DATA_QUALITY_FAILED",
+                    "validation": qc,
+                    "source": src.name,
+                    "is_live_market": qc.get("is_live_market"),
+                    "target_updated": False,
+                }
+                paths = write_report(
+                    run_id=run["run_id"],
+                    title="Optimization blocked: data quality",
+                    payload=payload,
+                )
+                payload["report_json"] = str(paths["json"])
+                payload["report_md"] = str(paths["md"])
+                finish_run(
+                    run["run_id"],
+                    status="error",
+                    result=payload,
+                    error="; ".join(qc.get("issues") or []) or "data quality failed",
+                )
+                _print_json(payload, stream=sys.stderr)
+                return 2
+
             holdings = load_holdings()
             result = run_optimize(
                 prices,
@@ -198,23 +237,34 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                 holdings=holdings,
                 min_turnover=0.0,
             )
-            LAST_TARGET_PATH.parent.mkdir(parents=True, exist_ok=True)
-            LAST_TARGET_PATH.write_text(
-                json.dumps(
-                    {
-                        "weights": result["weights"],
-                        "tickers": result["tickers"],
-                        "success": result["success"],
-                        "source": src.name,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            result["target_path"] = str(LAST_TARGET_PATH)
             result["source"] = src.name
+            result["is_live_market"] = bool(qc.get("is_live_market"))
+            result["validation"] = qc
+            result["target_updated"] = False
+
+            if result.get("success") is True:
+                LAST_TARGET_PATH.parent.mkdir(parents=True, exist_ok=True)
+                LAST_TARGET_PATH.write_text(
+                    json.dumps(
+                        {
+                            "weights": result["weights"],
+                            "tickers": result["tickers"],
+                            "success": True,
+                            "source": src.name,
+                            "is_live_market": result["is_live_market"],
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                result["target_path"] = str(LAST_TARGET_PATH)
+                result["target_updated"] = True
+            else:
+                result["error"] = result.get("message") or "optimizer reported success=false"
+                result["code"] = "OPTIMIZER_FAILED"
+
             paths = write_report(
                 run_id=run["run_id"],
                 title="Optimization report",
@@ -223,14 +273,14 @@ def cmd_optimize(args: argparse.Namespace) -> int:
             result["report_json"] = str(paths["json"])
             result["report_md"] = str(paths["md"])
 
-        code = 0 if result.get("success") else 2
+        code = 0 if result.get("success") is True else 2
         finish_run(
             run["run_id"],
             status="ok" if code == 0 else "error",
             result=result,
-            error=None if code == 0 else result.get("message"),
+            error=None if code == 0 else result.get("message") or result.get("error"),
         )
-        _print_json(result)
+        _print_json(result, stream=sys.stdout if code == 0 else sys.stderr)
         return code
     except PipelineLockError as e:
         finish_run(run["run_id"], status="error", error=str(e))
@@ -242,7 +292,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         return 4
     except HoldingsValidationError as e:
         finish_run(run["run_id"], status="error", error=str(e))
-        _print_json({"error": str(e)}, stream=sys.stderr)
+        _print_json({"error": str(e), "code": "HOLDINGS_INVALID"}, stream=sys.stderr)
         return 2
     except Exception as e:  # noqa: BLE001
         finish_run(run["run_id"], status="error", error=str(e))
@@ -304,8 +354,30 @@ def cmd_report(args: argparse.Namespace) -> int:
         return 1
 
 
+def _require_successful_target(target_data: dict[str, Any], target_path: Path) -> dict[str, float]:
+    """Принять только target с явным success=true."""
+    if not isinstance(target_data, dict):
+        raise TargetValidationError(
+            f"invalid target file {target_path}: expected JSON object"
+        )
+    if target_data.get("success") is not True:
+        raise TargetValidationError(
+            f"target {target_path} is not a successful optimization result "
+            f"(success={target_data.get('success')!r}); "
+            "refusing to use failed/incomplete target as portfolio goal "
+            "(code=TARGET_NOT_SUCCESSFUL)"
+        )
+    weights = target_data.get("weights")
+    if not isinstance(weights, dict) or not weights:
+        raise TargetValidationError(
+            f"target {target_path} missing non-empty 'weights' "
+            "(code=TARGET_MISSING_WEIGHTS)"
+        )
+    return {str(k): float(v) for k, v in weights.items()}
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
-    """Сравнить holdings с целевыми весами."""
+    """Сравнить holdings с целевыми весами (только success=true target)."""
     run = start_run("compare", params={"min_drift": args.min_drift})
     try:
         with pipeline_lock("pipeline"):
@@ -317,10 +389,11 @@ def cmd_compare(args: argparse.Namespace) -> int:
                     f"target weights not found: {target_path}; run optimize first"
                 )
             target_data = json.loads(target_path.read_text(encoding="utf-8"))
-            target = target_data.get("weights") or target_data
+            target = _require_successful_target(target_data, target_path)
             report = compare_weights(current, target, min_drift=args.min_drift)
             report["target_path"] = str(target_path)
             report["holdings_empty"] = len(current) == 0
+            report["target_success"] = True
 
         finish_run(run["run_id"], status="ok", result=report)
         _print_json(report)
@@ -329,7 +402,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e)}, stream=sys.stderr)
         return 3
-    except HoldingsValidationError as e:
+    except (HoldingsValidationError, TargetValidationError) as e:
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e)}, stream=sys.stderr)
         return 2
@@ -373,6 +446,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="universe=all fixture tickers; holdings=non-empty holdings only",
     )
     p_opt.add_argument("--max-weight", type=float, default=0.5)
+    p_opt.add_argument(
+        "--max-staleness-days",
+        type=int,
+        default=5,
+        help="Max age for live market sources (ignored for fixture/synthetic)",
+    )
     p_opt.add_argument(
         "--allow-optimize",
         action="store_true",

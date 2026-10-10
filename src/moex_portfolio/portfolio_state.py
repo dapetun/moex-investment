@@ -1,6 +1,11 @@
 """Фактические позиции портфеля (holdings) — отдельно от результатов оптимизации.
 
 Пустой портфель допустим. Не путать с profiles.py (снимок клики/весов оптимизатора).
+
+Ограничение (MVP): ``compare`` / ``weights_from_holdings`` требуют явного поля
+``weight`` у каждой позиции. Позиции только с ``shares`` без весов не оцениваются:
+рыночные веса по количеству бумаг и котировкам — отдельная будущая задача
+(без выдумывания весов и без нового источника данных в этом этапе).
 """
 
 from __future__ import annotations
@@ -181,6 +186,9 @@ def weights_from_holdings(data: dict[str, Any]) -> dict[str, float]:
         }
 
     raise HoldingsValidationError(
-        "cannot derive weights: positions have shares but no weights "
-        "(provide weight fields or prices separately)"
+        "cannot derive weights from shares-only positions: "
+        "every position must include explicit 'weight' for compare/optimize "
+        "in the current MVP. "
+        "Market-value weights from shares×prices are a future task "
+        "(code=HOLDINGS_SHARES_WITHOUT_WEIGHTS)."
     )

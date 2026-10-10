@@ -22,9 +22,10 @@ def iss_enabled() -> bool:
 
 
 def get_data_source_name() -> str:
-    """Имя активного источника: fixture | iss.
+    """Имя активного источника: fixture | market | iss.
 
     ``MOEX_DATA_SOURCE`` имеет приоритет; иначе fixture, пока ISS выключен.
+    ``market`` — локальный runtime-кэш с live-политикой свежести (не ISS).
     """
     explicit = os.environ.get("MOEX_DATA_SOURCE", "").strip().lower()
     if explicit:

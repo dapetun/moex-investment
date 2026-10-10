@@ -13,7 +13,12 @@ from typing import Protocol
 
 import pandas as pd
 
-from .settings import fixture_path, get_data_source_name, iss_enabled
+from .settings import (
+    fixture_path,
+    get_data_source_name,
+    iss_enabled,
+    runtime_cache_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +94,38 @@ class IssDataSource:
         )
 
 
+class RuntimeCacheDataSource:
+    """Локальный runtime-кэш как будущий «рыночный» режим без сети.
+
+    Не ISS и не seed ``price_data.csv``. Требует предварительного
+    ``update-data`` из разрешённого источника. К свежести применяется
+    live-политика QC.
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self.path = path or runtime_cache_path()
+
+    @property
+    def name(self) -> str:
+        return "market"
+
+    def load_prices(self, tickers: list[str] | None = None) -> pd.DataFrame:
+        if not self.path.exists():
+            raise DataSourceError(
+                f"market runtime cache not found: {self.path}. "
+                "Populate via an approved offline path first; ISS remains gated."
+            )
+        # тот же формат CSV, что у fixture
+        return FixtureDataSource(self.path).load_prices(tickers=tickers)
+
+
 def get_data_source() -> DataSource:
     """Фабрика активного источника по settings."""
     name = get_data_source_name()
     if name == "fixture":
         return FixtureDataSource()
+    if name == "market":
+        return RuntimeCacheDataSource()
     if name == "iss":
         return IssDataSource()
     raise DataSourceError(f"unknown data source: {name}")

@@ -49,6 +49,18 @@ data/locks/                      # pipeline.lock
 
 Скопируйте пример: `data/portfolio/holdings.example.json` → `holdings.json`.
 
+### Holdings: ограничение весов (MVP)
+
+`compare` и вывод текущих весов требуют **явного** поля `weight` у каждой позиции.
+Позиции только с `shares` без `weight` дают машиночитаемую ошибку
+`HOLDINGS_SHARES_WITHOUT_WEIGHTS` — веса не выдумываются.
+Будущая задача: рыночные веса = shares × цены (после clearance источника котировок).
+
+Перед `optimize` всегда выполняется QC данных. Для `fixture` календарная
+свежесть **не** требуется (синтетика ≠ live market). Для `market`/`iss`
+устаревшие/пустые/дырявые панели блокируют расчёт и **не** перезаписывают
+`data/outbox/last_target.json`. Target пишется только при `success=true`.
+
 ## 3. Команды CLI
 
 ```bash
