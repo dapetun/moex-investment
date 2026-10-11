@@ -1,69 +1,35 @@
-# Развёртывание и откат skill `cli-analyst-bundle`
+# Развёртывание и откат (кратко)
 
-**Пока владелец не подтвердил — ничего не копировать в рабочий профиль.**
+Полный воспроизводимый план: **`SAFE_DEPLOY.md`**.  
+Дословные патчи live: **`live_patches/`** (закрытие V8).  
+Разрешения: **`permissions/PERMISSION_A.md`**, **`permissions/PERMISSION_B.md`**.
 
-## Предусловия (решения владельца, замена DEC-test-c:3,4,14)
+**Не копировать в рабочий профиль без Permission A.**
 
-1. CLI `moex_portfolio optimize --allow-optimize` = «настоящий
-   оптимизатор» для POS/OPT/P:D20; `optimizer.yaml` остаётся
-   `enabled: false` и к CLI-пути не относится.
-2. Запуск на реальных позициях: `да` / `только one-shot` / `нет`
-   (пока нет отдельного разрешения - только синтетика / dry-run).
-3. Инициатор: только Даниил в чате Аналитика (не handoff, не радар).
-4. Реальные файлы - вне git и публичных handoff.
-5. PR #2 не сливать ради этого шага.
+## Предусловия (решения владельца)
 
-## Правки live (отдельный approve на каждый файл)
+1. CLI `optimize --allow-optimize` + success + `run_id` = настоящий оптимизатор.
+2. `optimizer.yaml` остаётся `enabled: false`.
+3. Инициатор — только Даниил в чате Аналитика.
+4. До Permission B — только синтетика / fixture.
+5. PR #2 не сливать.
 
-Патч **только добавляет** skill. Без правок действующих инструкций
-бот получит противоречия B1/B2/B7. При approve одновременно править:
+## Файлы к изменению при Permission A
 
-| Файл | Суть |
+| Файл | Патч |
 |------|------|
-| OPT + P:D20 | Исключение: CLI-путь по `cli-analyst-bundle` при `enabled:false` |
-| POS | «Настоящий оптимизатор» = yaml **или** CLI optimize + `run_id` |
-| P:D04 | Второй вход: CLI bundle (радар по-прежнему `events_latest.json`) |
-| P:D08 | Добавить skill в порядок |
-| profile `description` | Абзац из `PROFILE_SNIPPET.md` |
+| новый skill `cli-analyst-bundle` | копия `cli-analyst-bundle/` |
+| OPT `skill-1791618014068` | `live_patches/OPT_SKILL.patch.md` |
+| POS `skill-1791618006478` | `live_patches/POS_SKILL.patch.md` |
+| profile.json description | `live_patches/PROFILE_DESCRIPTION.patch.md` |
+| analysis_spec.md (опц.) | `live_patches/SPEC_analysis_spec.patch.md` |
 
-Штатное чтение `/workspace/invest/portfolio/…` по профилю **не сужать**
-(B13): ограничение «не читать invest без команды» относится только к
-**чужим** путям CLI/репо вне рабочего каталога профиля.
+Базовые sha256: `live_patches/AUDIT_BASELINE.md`. Drift → стоп.
 
-## Deploy (после approve)
+## Не менять
 
-1. Скопировать `docs/analyst_skill_patch/cli-analyst-bundle/` в skills.
-2. Внести правки таблицы выше + сниппет.
-3. Закрепить SHA репо в задании one-shot.
-4. Критерий успеха one-shot (синтетика / fixture):
-   - exit 0 цепочки; bundle `schema=moex_analyst_bundle.v1`;
-   - в отчёте баннер ДЕМОНСТРАЦИЯ (как в POS); есть `run_id` / `event_id`;
-   - программная сверка claims (как verify_report) без расхождений;
-   - формат 9 разделов SPEC.
-5. Dry-run пути `user_csv` на искусственных данных той же структуры
-   (`scripts/dry_run_real_shaped_analysis.py`, ISS off) — exit 0,
-   все шаги ok, пути в отчёте без абсолютных home.
-6. Только после (4)+(5) — отдельное разрешение на реальные файлы
-   (локально: `%USERPROFILE%\moex-private\…`; на box — путь, который
-   укажет Даниил; штатный `/workspace/invest/portfolio/` не подменять
-   без команды).
+`optimizer.yaml`, settings/store радара, реальные portfolio/prices, PR merge.
 
 ## Rollback
 
-1. Удалить skill-папку.
-2. Откатить правки OPT/POS/profile (список файлов + sha256 до/после).
-3. Данные CLI (holdings/outbox/events) не считать откатом профиля -
-   при необходимости изолированный DATA_DIR просто не использовать.
-4. Проверить: запрос «optimize» без skill → «интеграция не настроена»
-   или старое поведение yaml-пути.
-
-## Что skill разрешает / запрещает
-
-| Разрешено | Запрещено |
-|-----------|-----------|
-| Читать/валидировать `moex_analyst_bundle.v1` | Включать `optimizer.yaml` |
-| CLI-цепочка по **явной** команде Даниила | Cron / routines / автозапуск |
-| Target из successful `optimize` | Пересчёт весов Аналитиком |
-| Отказ при QC/stale/partial | ISS **в CLI-цепочке** |
-| Относительные пути артефактов | Сделки / ордера |
-| Баннер при `synthetic: true` | Реальные CSV в git/handoff |
+См. шаг 10 в `SAFE_DEPLOY.md` (восстановление из `/tmp/analyst-cli-backup-*`).
