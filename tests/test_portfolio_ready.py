@@ -28,3 +28,10 @@ def test_missing_panel_ticker_blocks() -> None:
     )
     assert report["ok"] is False
     assert any("CCC" in b for b in report["blockers"])
+
+
+def test_panel_tickers_required_for_ready() -> None:
+    report = check_portfolio_ready(csv_path=CSV, panel_tickers=None)
+    assert report["ok"] is False
+    assert report["ready_for_optimize"] is False
+    assert any("panel_coverage" in b for b in report["blockers"])
