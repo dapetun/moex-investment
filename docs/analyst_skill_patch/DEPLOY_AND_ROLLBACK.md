@@ -21,6 +21,7 @@
 | новый skill `cli-analyst-bundle` | копия `cli-analyst-bundle/` |
 | OPT `skill-1791618014068` | `live_patches/OPT_SKILL.patch.md` |
 | POS `skill-1791618006478` | `live_patches/POS_SKILL.patch.md` |
+| QC `skill-1791617999761` | `live_patches/QC_SKILL.patch.md` |
 | profile.json description | `live_patches/PROFILE_DESCRIPTION.patch.md` |
 | analysis_spec.md (опц.) | `live_patches/SPEC_analysis_spec.patch.md` |
 

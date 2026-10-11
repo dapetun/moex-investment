@@ -51,7 +51,7 @@
 
 CLI moex_portfolio (опционально)
 - Когда Даниил в своём чате явно просит CLI-анализ / bundle / optimize через moex_portfolio - skill cli-analyst-bundle.
-- SHA репозитория moex-portfolio обязателен в задании; без SHA - отказ.
+- SHA репозитория dapetun/moex-investment (пакет moex_portfolio) обязателен в задании; без SHA - отказ.
 - Формат отчёта остаётся 9 разделов analysis_spec.md §5.
 - Сделки и ордера - никогда. Cron/routines не создавать.
 - Запрет ISS только внутри CLI-цепочки skill; штатный QC профиля не отменяется.

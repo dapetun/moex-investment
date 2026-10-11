@@ -53,6 +53,17 @@
 - для пути B показаны целевые веса без success: true / без run_id, либо yaml enabled выставлен в true без отдельного разрешения владельца.
 ```
 
+## Изменение 5 — после шага 0 (уточнение QC для пути B)
+
+**Добавить:**
+```text
+Для пути B контроль качества до optimize выполняет цепочка CLI
+(check-portfolio-ready → validate-data) по skill cli-analyst-bundle;
+результат заносится в журнал и раздел отчёта о рыночных данных.
+На fixture (Permission A) stale/не-ISS = warn «синтетика», не fail.
+Yaml-путь A по-прежнему обязан пройти штатный skill QC (шаг 2 ниже).
+```
+
 ## Что не менять
 
 - description frontmatter skill;

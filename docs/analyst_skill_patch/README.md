@@ -10,4 +10,7 @@
 | `permissions/PERMISSION_B.md` | реальный портфель (отдельно) |
 | `DEPLOY_AND_ROLLBACK.md` | краткий указатель |
 
-Источник аудита live: Grok `2026-10-11_analyst-instructions-audit-3303148` (ref `cur-20261011-2040`).
+Источники аудита live:
+
+- `2026-10-11_analyst-instructions-audit-3303148` (ref `cur-20261011-2040`) — OPT/POS/profile/SPEC/yaml
+- `2026-10-11_qc-skill-verbatim-4d27afb` (ref `cur-20261011-2110`) — QC
