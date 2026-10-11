@@ -2,11 +2,15 @@
 
 **Статус:** только проект для утверждения. Рабочие profiles/skills/`optimizer.yaml` **не изменены**.
 
+Готовый текст skill и diff: `docs/analyst_skill_patch/`
+(`cli-analyst-bundle/SKILL.md`, `PROFILE_SNIPPET.md`, `DEPLOY_AND_ROLLBACK.md`).
+
 Контракт данных: `docs/ANALYST_BUNDLE_CONTRACT.md` (`moex_analyst_bundle.v1`).
+Процедура реального прогона: `docs/FIRST_REAL_ANALYSIS.md`.
 
 ## 1. Минимальные изменения skills/profile (после approve)
 
-Добавить skill (черновик имени: `cli-analyst-bundle`):
+Добавить skill из `docs/analyst_skill_patch/cli-analyst-bundle/SKILL.md`:
 
 1. При явном запросе пользователя на анализ портфеля через CLI — читать последний `moex_analyst_bundle.v1` (путь из задания / outbox).
 2. Не запускать Streamlit и не включать `optimizer.yaml` (`enabled` остаётся `false`).

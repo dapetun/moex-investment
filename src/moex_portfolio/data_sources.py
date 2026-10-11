@@ -144,39 +144,61 @@ class UserCsvDataSource:
             raise DataSourceError(
                 f"user price CSV not found: {self.path} (code=USER_CSV_MISSING)"
             )
-        # Запрет читать tracked fixture как «пользовательский рынок»
-        fixture = fixture_path().resolve()
-        try:
-            if self.path.resolve() == fixture:
-                raise DataSourceError(
-                    "refusing to treat synthetic fixture as user_csv; "
-                    "copy/export a separate file (code=USER_CSV_FIXTURE_REFUSED)"
-                )
-        except DataSourceError:
-            raise
-        except OSError:
-            pass
+        _refuse_fixture_path(self.path)
         logger.info("Loading user_csv prices from %s", self.path)
         return FixtureDataSource(self.path).load_prices(tickers=tickers)
 
 
-def validate_user_price_csv(path: Path) -> dict[str, object]:
-    """Структурная проверка пользовательского CSV до импорта в кэш."""
-    if not path.exists():
-        raise DataSourceError(f"user price CSV not found: {path}")
+def _refuse_fixture_path(path: Path) -> None:
+    """Запрет использовать tracked fixtures как пользовательский рынок."""
     try:
         resolved = path.resolve()
         fixtures_dir = fixture_path().resolve().parent
         if resolved == fixture_path().resolve() or resolved.parent == fixtures_dir:
             raise DataSourceError(
-                "refusing to import tracked synthetic fixtures as user market data "
+                "refusing to use tracked synthetic fixtures as user market data "
                 "(code=USER_CSV_FIXTURE_REFUSED)"
             )
     except DataSourceError:
         raise
     except OSError:
         pass
+
+
+def redact_local_path(path: Path | str) -> str:
+    """Скрыть абсолютный домашний путь в публичных метаданных."""
+    s = str(path).replace("\\", "/")
+    name = Path(s).name
+    if "/" in s:
+        return f"<local>/{name}"
+    return name
+
+
+def validate_user_price_csv(
+    path: Path,
+    *,
+    require_tickers: list[str] | None = None,
+    max_daily_change: float = 0.8,
+    redact_paths: bool = True,
+) -> dict[str, object]:
+    """Структурная проверка пользовательского CSV до импорта в кэш.
+
+    Ловит: слишком короткую историю, пустые столбцы, дубликаты дат,
+    нечисловые/неположительные цены, аномальные дневные скачки,
+    отсутствие требуемых тикеров. Не обращается к сети/ISS.
+    """
+    if not path.exists():
+        raise DataSourceError(f"user price CSV not found: {path}")
+    _refuse_fixture_path(path)
     df = FixtureDataSource(path).load_prices()
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise DataSourceError(
+            "user CSV TRADEDATE index invalid (code=USER_CSV_BAD_DATES)"
+        )
+    if df.index.has_duplicates:
+        raise DataSourceError(
+            "user CSV has duplicate TRADEDATE rows (code=USER_CSV_DUP_DATES)"
+        )
     price_cols = [c for c in df.columns if not str(c).endswith("_VALUE")]
     if len(price_cols) < 2:
         raise DataSourceError(
@@ -190,13 +212,58 @@ def validate_user_price_csv(path: Path) -> dict[str, object]:
         raise DataSourceError(
             "user CSV has all-NA price column (code=USER_CSV_EMPTY_COLUMN)"
         )
+    # нечисловые / неположительные / аномальные скачки
+    for col in price_cols:
+        raw = df[col]
+        series = pd.to_numeric(raw, errors="coerce")
+        if int(series.isna().sum()) > int(raw.isna().sum()):
+            raise DataSourceError(
+                f"user CSV column {col} has non-numeric prices "
+                f"(code=USER_CSV_NON_NUMERIC)"
+            )
+        if (series.dropna() <= 0).any():
+            raise DataSourceError(
+                f"user CSV column {col} has non-positive prices "
+                f"(code=USER_CSV_NON_POSITIVE)"
+            )
+        rets = series.pct_change().dropna()
+        if not rets.empty and bool((rets.abs() > max_daily_change).any()):
+            raise DataSourceError(
+                f"user CSV column {col} has daily change > {max_daily_change} "
+                f"(code=USER_CSV_PRICE_ANOMALY)"
+            )
+    missing_req: list[str] = []
+    if require_tickers:
+        have = {str(c).upper() for c in price_cols}
+        missing_req = [t for t in require_tickers if t.upper() not in have]
+        if missing_req:
+            raise DataSourceError(
+                f"user CSV missing required tickers {missing_req} "
+                f"(code=USER_CSV_TICKERS_MISSING)"
+            )
+    # крупные дыры в календаре (предупреждение, не блок)
+    gaps_days = 0
+    if len(df.index) >= 2:
+        deltas = df.index.to_series().diff().dt.days.dropna()
+        gaps_days = int(deltas.max()) if len(deltas) else 0
+    warnings: list[str] = []
+    if gaps_days > 10:
+        warnings.append(
+            f"largest calendar gap between bars is {gaps_days} days "
+            "(code=USER_CSV_GAP_WARN)"
+        )
     last = df.index.max()
+    path_out = redact_local_path(path) if redact_paths else str(path.resolve())
     return {
-        "path": str(path.resolve()),
+        "path": path_out,
+        "path_basename": Path(path).name,
         "rows": int(len(df)),
         "tickers": price_cols,
         "last_data_date": str(pd.Timestamp(last).date()),
         "format": "moex_panel_semicolon_v1",
+        "require_tickers_ok": not missing_req,
+        "max_calendar_gap_days": gaps_days,
+        "warnings": warnings,
     }
 
 

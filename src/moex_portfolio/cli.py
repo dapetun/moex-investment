@@ -22,6 +22,7 @@ from .data_sources import (
     DataSourceError,
     FixtureDataSource,
     get_data_source,
+    redact_local_path,
     validate_user_price_csv,
 )
 from .events import EventIngestGateError, ingest_events
@@ -261,9 +262,11 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                 _print_json(payload, stream=sys.stderr)
                 return 2
 
-            # Фикстура: min_turnover=0 (синтетика без реальной ликвидности).
-            # market/iss: тот же MIN_TURNOVER, что и Streamlit-путь.
-            min_turnover = 0.0 if src.name == "fixture" else float(MIN_TURNOVER)
+            # fixture/user_csv: панель уже отобрана пользователем/тестом —
+            # не режем по биржевому MIN_TURNOVER. market/iss — как Streamlit.
+            min_turnover = (
+                0.0 if src.name in {"fixture", "user_csv"} else float(MIN_TURNOVER)
+            )
 
             holdings = load_holdings()
             result = run_optimize(
@@ -370,14 +373,27 @@ def cmd_check_portfolio_ready(args: argparse.Namespace) -> int:
 
 def cmd_import_user_prices(args: argparse.Namespace) -> int:
     """Импорт пользовательского CSV в runtime-кэш (без сети/ISS)."""
+    req = [
+        t.strip().upper()
+        for t in (getattr(args, "require_tickers", "") or "").split(",")
+        if t.strip()
+    ]
     run = start_run(
         "import-user-prices",
-        params={"csv": args.csv, "skip_staleness": bool(args.skip_staleness)},
+        params={
+            "csv": Path(args.csv).name,
+            "skip_staleness": bool(args.skip_staleness),
+            "require_tickers": req or None,
+        },
     )
     try:
         with pipeline_lock("pipeline"):
             src = Path(args.csv)
-            meta = validate_user_price_csv(src)
+            meta = validate_user_price_csv(
+                src,
+                require_tickers=req or None,
+                redact_paths=True,
+            )
             cache = runtime_cache_path()
             cache.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, cache)
@@ -385,14 +401,14 @@ def cmd_import_user_prices(args: argparse.Namespace) -> int:
             payload = {
                 "action": "imported_user_prices",
                 "source": "user_csv",
-                "cache": str(cache),
-                "meta_path": str(sidecar),
+                "cache": redact_local_path(cache),
+                "meta_path": redact_local_path(sidecar),
                 "skip_staleness": bool(args.skip_staleness),
                 "iss_enabled": iss_enabled(),
                 **meta,
                 "hint": (
-                    "Set MOEX_DATA_SOURCE=user_csv and "
-                    f"MOEX_USER_PRICES_PATH={cache}"
+                    "Set MOEX_DATA_SOURCE=user_csv and MOEX_USER_PRICES_PATH="
+                    "<runtime_cache_path>"
                     + (
                         " MOEX_USER_CSV_SKIP_STALENESS=true"
                         if args.skip_staleness
@@ -400,7 +416,13 @@ def cmd_import_user_prices(args: argparse.Namespace) -> int:
                     )
                 ),
             }
-            atomic_write_json(sidecar, payload)
+            # sidecar хранит и машинный абсолютный путь (локально), и redacted-копию
+            sidecar_payload = {
+                **payload,
+                "cache_abs": str(cache.resolve()),
+                "source_basename": src.name,
+            }
+            atomic_write_json(sidecar, sidecar_payload)
         finish_run(run["run_id"], status="ok", result=payload)
         _print_json(payload)
         return 0
@@ -784,6 +806,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Import user-provided historical price CSV into runtime cache (no ISS)",
     )
     p_imp.add_argument("--csv", required=True, help="Local price panel CSV (; TRADEDATE)")
+    p_imp.add_argument(
+        "--require-tickers",
+        default="",
+        help="Comma-separated SECID/tickers that must exist in the panel",
+    )
     p_imp.add_argument(
         "--skip-staleness",
         action="store_true",
