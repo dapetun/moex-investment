@@ -1,5 +1,5 @@
 as_of_date,account_label,ticker,isin,secid,board,security_type,quantity,market_value,weight,notes
-2026-10-10,broker_a,AAA,RU00AAA00001,AAA,TQBR,share,100,105000,0.20,synthetic account A
-2026-10-10,broker_b,AAA,RU00AAA00001,AAA,TQBR,share,80,84000,0.18,synthetic account B
-2026-10-10,broker_a,BBB,RU00BBB00002,BBB,TQBR,share,50,75000,0.25,synthetic
-2026-10-10,broker_a,CCC,RU00CCC00003,CCC,TQBR,share,200,147000,0.37,synthetic
+2026-10-10,broker_a,AAA,RU00AAA00001,AAA,TQBR,share,100,100000,0.20,synthetic account A
+2026-10-10,broker_b,AAA,RU00AAA00001,AAA,TQBR,share,80,90000,0.18,synthetic account B
+2026-10-10,broker_a,BBB,RU00BBB00002,BBB,TQBR,share,50,125000,0.25,synthetic
+2026-10-10,broker_a,CCC,RU00CCC00003,CCC,TQBR,share,200,185000,0.37,synthetic

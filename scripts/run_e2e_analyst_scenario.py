@@ -213,9 +213,16 @@ def main() -> int:
     if code != 0:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 1
-    ingest = json.loads(out)
     ingest_path = work / "ingest.json"
     ingest_path.write_text(out, encoding="utf-8")
+    ingest_payload = json.loads(out)
+    if (
+        ingest_payload.get("accepted", 0) < 1
+        and ingest_payload.get("duplicate_skipped", 0) < 1
+    ):
+        note("ingest-payload", False, reason="no accepted/duplicate events")
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 1
     prod_events = clone / "data" / "processed" / "events"
     test_events = clone / "data" / "processed" / "events_test"
     note(

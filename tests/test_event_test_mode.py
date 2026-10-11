@@ -35,6 +35,49 @@ def test_classify_pilot_is_test():
     assert classify_release(raw) == "test"
 
 
+def test_classify_is_test_string_is_invalid():
+    raw = {
+        "schema_version": "1.1",
+        "generated_at": "2026-10-11T00:00:00Z",
+        "is_test": "true",
+        "events": [],
+    }
+    assert classify_release(raw) == "invalid"
+
+
+def test_is_test_string_rejected_before_write(event_root, tmp_path):
+    src = tmp_path / "bad.json"
+    src.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "generated_at": "2026-10-11T00:00:00Z",
+                "coverage_from": "2026-10-01",
+                "coverage_to": "2026-10-11",
+                "generated_by": "test",
+                "is_test": "true",
+                "sources_checked": [],
+                "events": [
+                    {
+                        "event_id": "EV-1",
+                        "ticker": "AAA",
+                        "event_type": "unknown",
+                        "factual_summary": "a",
+                        "source_name": "x",
+                        "source_url": "https://example.invalid/a",
+                        "published_at": "2026-10-10",
+                        "event_date": "2026-10-10",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(EventIngestGateError, match="EVENT_IS_TEST_INVALID"):
+        ingest_events(source_path=src, test_mode=False, data_root=event_root)
+    assert list((event_root / "processed").rglob("*.json")) == []
+
+
 def test_classify_mixed_ids():
     raw = {
         "schema_version": "1.1",

@@ -85,13 +85,16 @@ def event_id_is_test(event_id: object) -> bool:
 
 
 def classify_release(raw: Any) -> str:
-    """Классифицировать выпуск: ``test`` | ``prod`` | ``mixed``.
+    """Классифицировать выпуск: ``test`` | ``prod`` | ``mixed`` | ``invalid``.
 
-    Тест: ``is_test: true`` на обёртке и/или все event_id с префиксом TEST-EV-.
-    Mixed: часть id тестовые, часть нет, при ``is_test`` не true.
+    Тест: ``is_test: true`` (строго boolean) и/или все event_id с префиксом
+    TEST-EV-. Mixed: часть id тестовые, часть нет, при ``is_test`` не true.
+    ``invalid``: обёртка с ``is_test``, но значение не boolean (fail-closed).
     """
     if not isinstance(raw, dict):
         return "prod"
+    if "is_test" in raw and not isinstance(raw.get("is_test"), bool):
+        return "invalid"
     batch_test = raw.get("is_test") is True
     try:
         items = extract_event_list(raw)
@@ -700,6 +703,12 @@ def _gate_release_class(
     label: str,
 ) -> None:
     """Отклонить недопустимую комбинацию test/prod до записи в хранилище."""
+    if kind == "invalid":
+        raise EventIngestGateError(
+            f"{label}: is_test must be boolean true/false "
+            f"(code=EVENT_IS_TEST_INVALID)",
+            code="EVENT_IS_TEST_INVALID",
+        )
     if kind == "mixed":
         raise EventIngestGateError(
             f"{label}: mixed test/prod event_id in one release "

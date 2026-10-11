@@ -1,10 +1,10 @@
 {
   "schema": "moex_analyst_bundle.v1",
-  "generated_at": "2026-10-11T08:51:36.232640+00:00",
+  "generated_at": "2026-10-11T09:13:11.587270+00:00",
   "synthetic": true,
   "disclaimer": "Синтетические/тестовые данные. Не является инвестиционной рекомендацией по реальному портфелю. Количественные поля должны совпадать с артефактами CLI; качественные оценки радара — отдельный блок без пересчёта ожидаемой доходности.",
   "holdings": {
-    "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\portfolio\\holdings.json",
+    "path": "<E2E_TMP>",
     "file_status": "ok",
     "as_of": "2026-10-10",
     "cash": 0.0,
@@ -23,16 +23,16 @@
             "account_label": "broker_a",
             "weight": 0.2,
             "shares": 100.0,
-            "market_value": 105000.0
+            "market_value": 100000.0
           },
           {
             "account_label": "broker_b",
             "weight": 0.18,
             "shares": 80.0,
-            "market_value": 84000.0
+            "market_value": 90000.0
           }
         ],
-        "market_value": 189000.0
+        "market_value": 190000.0
       },
       {
         "ticker": "BBB",
@@ -44,7 +44,7 @@
         "board": "TQBR",
         "security_type": "share",
         "account_label": "broker_a",
-        "market_value": 75000.0
+        "market_value": 125000.0
       },
       {
         "ticker": "CCC",
@@ -56,7 +56,7 @@
         "board": "TQBR",
         "security_type": "share",
         "account_label": "broker_a",
-        "market_value": 147000.0
+        "market_value": 185000.0
       }
     ],
     "weight_sum_policy": "canonical",
@@ -81,7 +81,7 @@
     "iss_enabled": false
   },
   "target": {
-    "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\last_target.json",
+    "path": "<E2E_TMP>",
     "payload": {
       "weights": {
         "AAA": 0.3333333333333333,
@@ -129,15 +129,15 @@
       "BBB",
       "CCC"
     ],
-    "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\last_target.json",
+    "target_path": "<E2E_TMP>",
     "holdings_empty": false,
     "target_success": true,
-    "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085130Z-6751ebb4.json",
-    "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085130Z-6751ebb4.md"
+    "report_json": "<E2E_TMP>",
+    "report_md": "<E2E_TMP>"
   },
   "events": {
-    "processed_dir": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_test",
-    "history_dir": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_history_test",
+    "processed_dir": "<E2E_TMP>",
+    "history_dir": "<E2E_TMP>",
     "history_files": 0,
     "items": [
       {
@@ -149,9 +149,17 @@
         "source": "synthetic-prime",
         "url": "https://example.invalid/aaa/div-001",
         "title": "СД рекомендовал дивиденд (СИНТЕТИКА AAA).",
+        "factual_summary": "СД рекомендовал дивиденд (СИНТЕТИКА AAA).",
         "company": "Synthetic Issuer AAA",
         "materiality": "medium",
-        "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_test\\TEST-EV-20261011-AAA-001.json"
+        "equity_assessment": {
+          "materiality": "medium",
+          "direction": "positive",
+          "confidence": "medium",
+          "rationale": "Синтетическая оценка для e2e."
+        },
+        "bond_assessment": null,
+        "path": "<E2E_TMP>"
       },
       {
         "event_id": "TEST-EV-20261011-BBB-001",
@@ -162,9 +170,17 @@
         "source": "synthetic-prime",
         "url": "https://example.invalid/bbb/guide-001",
         "title": "Компания снизила прогноз (СИНТЕТИКА BBB).",
+        "factual_summary": "Компания снизила прогноз (СИНТЕТИКА BBB).",
         "company": "Synthetic Issuer BBB",
         "materiality": "high",
-        "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_test\\TEST-EV-20261011-BBB-001.json"
+        "equity_assessment": {
+          "materiality": "high",
+          "direction": "negative",
+          "confidence": "high",
+          "rationale": "Синтетическое событие риска для e2e."
+        },
+        "bond_assessment": null,
+        "path": "<E2E_TMP>"
       }
     ],
     "ingest": {
@@ -178,16 +194,16 @@
       "partial": false,
       "ok": true,
       "test_mode": true,
-      "inbox": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\inbox\\events_test",
-      "processed": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_test",
-      "history": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_history_test",
-      "inbox_archive": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\inbox_archive_test",
+      "inbox": "<E2E_TMP>",
+      "processed": "<E2E_TMP>",
+      "history": "<E2E_TMP>",
+      "inbox_archive": "<E2E_TMP>",
       "archives": [
-        "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\inbox_archive_test\\e2e_radar_test_batch__20261011T085131Z.json"
+        "<E2E_TMP>"
       ],
-      "source_path": "C:\\My_Data\\Files\\Hobby\\GitHub\\moex-investment\\tests\\fixtures\\e2e_radar_test_batch.json",
+      "source_path": "C:/My_Data/Files/Hobby/GitHub/moex-investment/tests/fixtures/e2e_radar_test_batch.json",
       "staged_from_source": [
-        "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\inbox\\events_test\\e2e_radar_test_batch.json"
+        "<E2E_TMP>"
       ],
       "details": [
         {
@@ -218,10 +234,10 @@
   },
   "runs": [
     {
-      "run_id": "20261011T085128Z-38eec4a4",
-      "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\runs\\20261011T085128Z-38eec4a4.json",
+      "run_id": "20261011T091304Z-e552640a",
+      "path": "<E2E_TMP>",
       "record": {
-        "run_id": "20261011T085128Z-38eec4a4",
+        "run_id": "20261011T091304Z-e552640a",
         "command": "optimize",
         "params": {
           "mode": "universe",
@@ -230,8 +246,8 @@
           "iss_enabled": false
         },
         "status": "ok",
-        "started_at": "2026-10-11T08:51:28.751793+00:00",
-        "finished_at": "2026-10-11T08:51:28.815791+00:00",
+        "started_at": "2026-10-11T09:13:04.695902+00:00",
+        "finished_at": "2026-10-11T09:13:04.746045+00:00",
         "error": null,
         "result": {
           "mode": "universe",
@@ -273,24 +289,24 @@
             "note": "synthetic/fixture source: not treated as live market quotes; staleness check skipped"
           },
           "target_updated": true,
-          "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\last_target.json",
-          "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085128Z-38eec4a4.json",
-          "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085128Z-38eec4a4.md"
+          "target_path": "<E2E_TMP>",
+          "report_json": "<E2E_TMP>",
+          "report_md": "<E2E_TMP>"
         }
       }
     },
     {
-      "run_id": "20261011T085130Z-6751ebb4",
-      "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\runs\\20261011T085130Z-6751ebb4.json",
+      "run_id": "20261011T091306Z-d3a56470",
+      "path": "<E2E_TMP>",
       "record": {
-        "run_id": "20261011T085130Z-6751ebb4",
+        "run_id": "20261011T091306Z-d3a56470",
         "command": "compare",
         "params": {
           "min_drift": 0.05
         },
         "status": "ok",
-        "started_at": "2026-10-11T08:51:30.318819+00:00",
-        "finished_at": "2026-10-11T08:51:30.329624+00:00",
+        "started_at": "2026-10-11T09:13:06.118006+00:00",
+        "finished_at": "2026-10-11T09:13:06.128077+00:00",
         "error": null,
         "result": {
           "needs_rebalance": true,
@@ -323,11 +339,11 @@
             "BBB",
             "CCC"
           ],
-          "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\last_target.json",
+          "target_path": "<E2E_TMP>",
           "holdings_empty": false,
           "target_success": true,
-          "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085130Z-6751ebb4.json",
-          "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085130Z-6751ebb4.md"
+          "report_json": "<E2E_TMP>",
+          "report_md": "<E2E_TMP>"
         }
       }
     }

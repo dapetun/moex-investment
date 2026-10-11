@@ -38,7 +38,7 @@ MOEX_ISS_ENABLED=false MOEX_DATA_SOURCE=fixture \
 | `validation` | результат QC |
 | `target.payload` | `last_target` (только при `success: true`) |
 | `compare` | drift / needs_rebalance |
-| `events.items[]` | `event_id`, ticker, type, source, url |
+| `events.items[]` | `event_id`, ticker, type, source, url, `factual_summary`, `materiality`, `equity_assessment`/`bond_assessment` (direction, confidence, rationale) — качественный блок радара, не вход solver |
 | `runs[]` | journal run_id + path |
 | `analyst_instructions` | правила интерпретации |
 

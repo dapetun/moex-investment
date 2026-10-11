@@ -40,6 +40,9 @@ def _list_event_summaries(processed_dir: Path, *, limit: int = 50) -> list[dict[
             continue
         if not isinstance(ev, dict):
             continue
+        eq = ev.get("equity_assessment") if isinstance(ev.get("equity_assessment"), dict) else {}
+        bond = ev.get("bond_assessment") if isinstance(ev.get("bond_assessment"), dict) else {}
+        materiality = eq.get("materiality") if eq else ev.get("materiality")
         out.append(
             {
                 "event_id": ev.get("event_id"),
@@ -50,10 +53,25 @@ def _list_event_summaries(processed_dir: Path, *, limit: int = 50) -> list[dict[
                 "source": ev.get("source") or ev.get("source_name"),
                 "url": ev.get("url") or ev.get("source_url"),
                 "title": ev.get("title") or ev.get("summary"),
+                "factual_summary": ev.get("factual_summary"),
                 "company": ev.get("company") or ev.get("issuer_name"),
-                "materiality": (ev.get("equity_assessment") or {}).get("materiality")
-                if isinstance(ev.get("equity_assessment"), dict)
-                else ev.get("materiality"),
+                "materiality": materiality,
+                "equity_assessment": {
+                    "materiality": eq.get("materiality"),
+                    "direction": eq.get("direction"),
+                    "confidence": eq.get("confidence"),
+                    "rationale": eq.get("rationale"),
+                }
+                if eq
+                else None,
+                "bond_assessment": {
+                    "materiality": bond.get("materiality"),
+                    "direction": bond.get("direction"),
+                    "confidence": bond.get("confidence"),
+                    "rationale": bond.get("rationale"),
+                }
+                if bond
+                else None,
                 "path": str(path),
             }
         )
