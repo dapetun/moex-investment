@@ -1,10 +1,10 @@
 {
   "schema": "moex_analyst_bundle.v1",
-  "generated_at": "2026-10-11T09:13:11.587270+00:00",
+  "generated_at": "2026-10-11T14:05:36.508346+00:00",
   "synthetic": true,
   "disclaimer": "Синтетические/тестовые данные. Не является инвестиционной рекомендацией по реальному портфелю. Количественные поля должны совпадать с артефактами CLI; качественные оценки радара — отдельный блок без пересчёта ожидаемой доходности.",
   "holdings": {
-    "path": "<E2E_TMP>",
+    "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\portfolio\\holdings.json",
     "file_status": "ok",
     "as_of": "2026-10-10",
     "cash": 0.0,
@@ -66,9 +66,9 @@
   "validation": {
     "ok": true,
     "status": "ok",
-    "last_data_date": "2026-10-09",
-    "age_days": 2,
-    "rows": 60,
+    "last_data_date": "2026-09-23",
+    "age_days": 18,
+    "rows": 126,
     "columns": 6,
     "issues": [],
     "as_of": "2026-10-11",
@@ -77,16 +77,17 @@
     "min_price_coverage": 0.8,
     "source": "fixture",
     "is_live_market": false,
+    "is_user_csv": false,
     "note": "synthetic/fixture source: not treated as live market quotes; staleness check skipped",
     "iss_enabled": false
   },
   "target": {
-    "path": "<E2E_TMP>",
+    "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\last_target.json",
     "payload": {
       "weights": {
-        "AAA": 0.3333333333333333,
-        "BBB": 0.3333333333333333,
-        "CCC": 0.3333333333333333
+        "AAA": 0.2916171370691636,
+        "BBB": 0.20838286293083647,
+        "CCC": 0.4999999999999999
       },
       "tickers": [
         "AAA",
@@ -102,26 +103,26 @@
     "needs_rebalance": true,
     "needs_action": true,
     "allocation_kind": "rebalance",
-    "max_abs_drift": 0.08333333333333331,
+    "max_abs_drift": 0.1299999999999999,
     "min_drift": 0.05,
     "diffs": [
       {
         "ticker": "AAA",
         "current": 0.38,
-        "target": 0.3333333333333333,
-        "drift": 0.04666666666666669
+        "target": 0.2916171370691636,
+        "drift": 0.08838286293083641
       },
       {
         "ticker": "BBB",
         "current": 0.25,
-        "target": 0.3333333333333333,
-        "drift": 0.08333333333333331
+        "target": 0.20838286293083647,
+        "drift": 0.041617137069163535
       },
       {
         "ticker": "CCC",
         "current": 0.37,
-        "target": 0.3333333333333333,
-        "drift": 0.03666666666666668
+        "target": 0.4999999999999999,
+        "drift": 0.1299999999999999
       }
     ],
     "tickers": [
@@ -129,15 +130,15 @@
       "BBB",
       "CCC"
     ],
-    "target_path": "<E2E_TMP>",
+    "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\last_target.json",
     "holdings_empty": false,
     "target_success": true,
-    "report_json": "<E2E_TMP>",
-    "report_md": "<E2E_TMP>"
+    "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140530Z-49bd0952.json",
+    "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140530Z-49bd0952.md"
   },
   "events": {
-    "processed_dir": "<E2E_TMP>",
-    "history_dir": "<E2E_TMP>",
+    "processed_dir": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_test",
+    "history_dir": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_history_test",
     "history_files": 0,
     "items": [
       {
@@ -159,7 +160,7 @@
           "rationale": "Синтетическая оценка для e2e."
         },
         "bond_assessment": null,
-        "path": "<E2E_TMP>"
+        "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_test\\TEST-EV-20261011-AAA-001.json"
       },
       {
         "event_id": "TEST-EV-20261011-BBB-001",
@@ -180,7 +181,7 @@
           "rationale": "Синтетическое событие риска для e2e."
         },
         "bond_assessment": null,
-        "path": "<E2E_TMP>"
+        "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_test\\TEST-EV-20261011-BBB-001.json"
       }
     ],
     "ingest": {
@@ -194,16 +195,16 @@
       "partial": false,
       "ok": true,
       "test_mode": true,
-      "inbox": "<E2E_TMP>",
-      "processed": "<E2E_TMP>",
-      "history": "<E2E_TMP>",
-      "inbox_archive": "<E2E_TMP>",
+      "inbox": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\inbox\\events_test",
+      "processed": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_test",
+      "history": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_history_test",
+      "inbox_archive": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\inbox_archive_test",
       "archives": [
-        "<E2E_TMP>"
+        "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\inbox_archive_test\\e2e_radar_test_batch__20261011T140531Z.json"
       ],
-      "source_path": "C:/My_Data/Files/Hobby/GitHub/moex-investment/tests/fixtures/e2e_radar_test_batch.json",
+      "source_path": "C:\\My_Data\\Files\\Hobby\\GitHub\\moex-investment\\tests\\fixtures\\e2e_radar_test_batch.json",
       "staged_from_source": [
-        "<E2E_TMP>"
+        "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\inbox\\events_test\\e2e_radar_test_batch.json"
       ],
       "details": [
         {
@@ -234,10 +235,10 @@
   },
   "runs": [
     {
-      "run_id": "20261011T091304Z-e552640a",
-      "path": "<E2E_TMP>",
+      "run_id": "20261011T140528Z-a268ccda",
+      "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\runs\\20261011T140528Z-a268ccda.json",
       "record": {
-        "run_id": "20261011T091304Z-e552640a",
+        "run_id": "20261011T140528Z-a268ccda",
         "command": "optimize",
         "params": {
           "mode": "universe",
@@ -246,8 +247,8 @@
           "iss_enabled": false
         },
         "status": "ok",
-        "started_at": "2026-10-11T09:13:04.695902+00:00",
-        "finished_at": "2026-10-11T09:13:04.746045+00:00",
+        "started_at": "2026-10-11T14:05:28.836782+00:00",
+        "finished_at": "2026-10-11T14:05:28.909795+00:00",
         "error": null,
         "result": {
           "mode": "universe",
@@ -257,13 +258,13 @@
             "CCC"
           ],
           "weights": {
-            "AAA": 0.3333333333333333,
-            "BBB": 0.3333333333333333,
-            "CCC": 0.3333333333333333
+            "AAA": 0.2916171370691636,
+            "BBB": 0.20838286293083647,
+            "CCC": 0.4999999999999999
           },
-          "return": 0.24496506598041579,
-          "volatility": 0.0002537236594865924,
-          "sharpe": 965.4797919756495,
+          "return": 0.08762669939641442,
+          "volatility": 0.13785941051666922,
+          "sharpe": 0.6356236332942905,
           "success": true,
           "message": "Optimization terminated successfully",
           "risk_free_rate": 0.0,
@@ -275,9 +276,9 @@
           "validation": {
             "ok": true,
             "status": "ok",
-            "last_data_date": "2026-10-09",
-            "age_days": 2,
-            "rows": 60,
+            "last_data_date": "2026-09-23",
+            "age_days": 18,
+            "rows": 126,
             "columns": 6,
             "issues": [],
             "as_of": "2026-10-11",
@@ -286,52 +287,53 @@
             "min_price_coverage": 0.8,
             "source": "fixture",
             "is_live_market": false,
+            "is_user_csv": false,
             "note": "synthetic/fixture source: not treated as live market quotes; staleness check skipped"
           },
           "target_updated": true,
-          "target_path": "<E2E_TMP>",
-          "report_json": "<E2E_TMP>",
-          "report_md": "<E2E_TMP>"
+          "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\last_target.json",
+          "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140528Z-a268ccda.json",
+          "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140528Z-a268ccda.md"
         }
       }
     },
     {
-      "run_id": "20261011T091306Z-d3a56470",
-      "path": "<E2E_TMP>",
+      "run_id": "20261011T140530Z-49bd0952",
+      "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\runs\\20261011T140530Z-49bd0952.json",
       "record": {
-        "run_id": "20261011T091306Z-d3a56470",
+        "run_id": "20261011T140530Z-49bd0952",
         "command": "compare",
         "params": {
           "min_drift": 0.05
         },
         "status": "ok",
-        "started_at": "2026-10-11T09:13:06.118006+00:00",
-        "finished_at": "2026-10-11T09:13:06.128077+00:00",
+        "started_at": "2026-10-11T14:05:30.441574+00:00",
+        "finished_at": "2026-10-11T14:05:30.456302+00:00",
         "error": null,
         "result": {
           "needs_rebalance": true,
           "needs_action": true,
           "allocation_kind": "rebalance",
-          "max_abs_drift": 0.08333333333333331,
+          "max_abs_drift": 0.1299999999999999,
           "min_drift": 0.05,
           "diffs": [
             {
               "ticker": "AAA",
               "current": 0.38,
-              "target": 0.3333333333333333,
-              "drift": 0.04666666666666669
+              "target": 0.2916171370691636,
+              "drift": 0.08838286293083641
             },
             {
               "ticker": "BBB",
               "current": 0.25,
-              "target": 0.3333333333333333,
-              "drift": 0.08333333333333331
+              "target": 0.20838286293083647,
+              "drift": 0.041617137069163535
             },
             {
               "ticker": "CCC",
               "current": 0.37,
-              "target": 0.3333333333333333,
-              "drift": 0.03666666666666668
+              "target": 0.4999999999999999,
+              "drift": 0.1299999999999999
             }
           ],
           "tickers": [
@@ -339,11 +341,11 @@
             "BBB",
             "CCC"
           ],
-          "target_path": "<E2E_TMP>",
+          "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\last_target.json",
           "holdings_empty": false,
           "target_success": true,
-          "report_json": "<E2E_TMP>",
-          "report_md": "<E2E_TMP>"
+          "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140530Z-49bd0952.json",
+          "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140530Z-49bd0952.md"
         }
       }
     }

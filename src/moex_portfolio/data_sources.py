@@ -18,6 +18,7 @@ from .settings import (
     get_data_source_name,
     iss_enabled,
     runtime_cache_path,
+    user_prices_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,86 @@ class RuntimeCacheDataSource:
         return FixtureDataSource(self.path).load_prices(tickers=tickers)
 
 
+class UserCsvDataSource:
+    """Явно выбранная пользователем локальная ценовая панель.
+
+    Не сеть, не ISS, не подмена fixture. Требует ``MOEX_USER_PRICES_PATH``
+    или путь в конструкторе. Формат как у fixture (``;``, TRADEDATE).
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self.path = path or user_prices_path()
+
+    @property
+    def name(self) -> str:
+        return "user_csv"
+
+    def load_prices(self, tickers: list[str] | None = None) -> pd.DataFrame:
+        if self.path is None:
+            raise DataSourceError(
+                "user_csv requires MOEX_USER_PRICES_PATH "
+                "(code=USER_CSV_PATH_REQUIRED)"
+            )
+        if not self.path.exists():
+            raise DataSourceError(
+                f"user price CSV not found: {self.path} (code=USER_CSV_MISSING)"
+            )
+        # Запрет читать tracked fixture как «пользовательский рынок»
+        fixture = fixture_path().resolve()
+        try:
+            if self.path.resolve() == fixture:
+                raise DataSourceError(
+                    "refusing to treat synthetic fixture as user_csv; "
+                    "copy/export a separate file (code=USER_CSV_FIXTURE_REFUSED)"
+                )
+        except DataSourceError:
+            raise
+        except OSError:
+            pass
+        logger.info("Loading user_csv prices from %s", self.path)
+        return FixtureDataSource(self.path).load_prices(tickers=tickers)
+
+
+def validate_user_price_csv(path: Path) -> dict[str, object]:
+    """Структурная проверка пользовательского CSV до импорта в кэш."""
+    if not path.exists():
+        raise DataSourceError(f"user price CSV not found: {path}")
+    try:
+        resolved = path.resolve()
+        fixtures_dir = fixture_path().resolve().parent
+        if resolved == fixture_path().resolve() or resolved.parent == fixtures_dir:
+            raise DataSourceError(
+                "refusing to import tracked synthetic fixtures as user market data "
+                "(code=USER_CSV_FIXTURE_REFUSED)"
+            )
+    except DataSourceError:
+        raise
+    except OSError:
+        pass
+    df = FixtureDataSource(path).load_prices()
+    price_cols = [c for c in df.columns if not str(c).endswith("_VALUE")]
+    if len(price_cols) < 2:
+        raise DataSourceError(
+            "user CSV needs >=2 price columns (code=USER_CSV_TOO_FEW_TICKERS)"
+        )
+    if len(df) < 20:
+        raise DataSourceError(
+            f"user CSV has {len(df)} rows, need >=20 (code=USER_CSV_TOO_SHORT)"
+        )
+    if df[price_cols].isna().all().any():
+        raise DataSourceError(
+            "user CSV has all-NA price column (code=USER_CSV_EMPTY_COLUMN)"
+        )
+    last = df.index.max()
+    return {
+        "path": str(path.resolve()),
+        "rows": int(len(df)),
+        "tickers": price_cols,
+        "last_data_date": str(pd.Timestamp(last).date()),
+        "format": "moex_panel_semicolon_v1",
+    }
+
+
 def get_data_source() -> DataSource:
     """Фабрика активного источника по settings."""
     name = get_data_source_name()
@@ -126,6 +207,8 @@ def get_data_source() -> DataSource:
         return FixtureDataSource()
     if name == "market":
         return RuntimeCacheDataSource()
+    if name == "user_csv":
+        return UserCsvDataSource()
     if name == "iss":
         return IssDataSource()
     raise DataSourceError(f"unknown data source: {name}")

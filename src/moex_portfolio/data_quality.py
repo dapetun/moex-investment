@@ -24,7 +24,7 @@ _SEVERITY = {
     ValidationStatus.MISSING: 3,
 }
 
-_LIVE_SOURCES = frozenset({"market", "iss"})
+_LIVE_SOURCES = frozenset({"market", "iss", "user_csv"})
 
 
 def validate_price_panel(
@@ -188,18 +188,29 @@ def validate_for_optimize(
     Для ``fixture`` / синтетики не требуем календарной свежести.
     Для ``market`` / ``iss`` блокируем stale/missing/invalid.
     """
+    from .settings import user_csv_skip_staleness
+
     is_live = source_name in _LIVE_SOURCES
+    check_staleness = is_live
+    if source_name == "user_csv" and user_csv_skip_staleness():
+        check_staleness = False
     report = validate_price_panel(
         df,
         as_of=as_of,
         max_staleness_days=max_staleness_days,
-        check_staleness=is_live,
+        check_staleness=check_staleness,
     )
     report["source"] = source_name
-    report["is_live_market"] = is_live
-    if not is_live:
+    report["is_live_market"] = is_live and source_name != "user_csv"
+    report["is_user_csv"] = source_name == "user_csv"
+    if source_name == "fixture":
         report["note"] = (
             "synthetic/fixture source: not treated as live market quotes; "
             "staleness check skipped"
+        )
+    elif source_name == "user_csv" and not check_staleness:
+        report["note"] = (
+            "user_csv with MOEX_USER_CSV_SKIP_STALENESS=true: "
+            "historical panel attested by user; not a live market feed"
         )
     return report

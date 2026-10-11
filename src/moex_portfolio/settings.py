@@ -22,10 +22,11 @@ def iss_enabled() -> bool:
 
 
 def get_data_source_name() -> str:
-    """Имя активного источника: fixture | market | iss.
+    """Имя активного источника: fixture | market | user_csv | iss.
 
     ``MOEX_DATA_SOURCE`` имеет приоритет; иначе fixture, пока ISS выключен.
     ``market`` — локальный runtime-кэш с live-политикой свежести (не ISS).
+    ``user_csv`` — явно указанный пользователем исторический CSV (не сеть, не ISS).
     """
     explicit = os.environ.get("MOEX_DATA_SOURCE", "").strip().lower()
     if explicit:
@@ -41,6 +42,17 @@ def fixture_path() -> Path:
     if env:
         return Path(env)
     return DATA_DIR / "fixtures" / "synthetic_prices.csv"
+
+
+def user_prices_path() -> Path | None:
+    """Путь к пользовательской панели (``MOEX_USER_PRICES_PATH``)."""
+    env = os.environ.get("MOEX_USER_PRICES_PATH", "").strip()
+    return Path(env) if env else None
+
+
+def user_csv_skip_staleness() -> bool:
+    """Явное подтверждение исторической панели без проверки свежести."""
+    return os.environ.get("MOEX_USER_CSV_SKIP_STALENESS", "false").strip().lower() in _TRUE
 
 
 def runtime_cache_path() -> Path:

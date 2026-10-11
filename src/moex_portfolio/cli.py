@@ -18,7 +18,12 @@ from .analyst_bundle import build_analyst_bundle, write_analyst_bundle
 from .compare import compare_weights
 from .config import DATA_DIR, MIN_TURNOVER
 from .data_quality import validate_for_optimize
-from .data_sources import DataSourceError, FixtureDataSource, get_data_source
+from .data_sources import (
+    DataSourceError,
+    FixtureDataSource,
+    get_data_source,
+    validate_user_price_csv,
+)
 from .events import EventIngestGateError, ingest_events
 from .io_util import atomic_write_json
 from .locks import PipelineLockError, pipeline_lock
@@ -29,6 +34,7 @@ from .numeric import (
 )
 from .pipeline import current_weights_or_empty, run_optimize
 from .portfolio_adapter import PortfolioAdapterError, adapt_analyst_csv
+from .portfolio_ready import check_portfolio_ready
 from .portfolio_state import HoldingsValidationError, load_holdings, save_holdings
 from .reporting import write_report
 from .run_journal import finish_run, load_run, start_run
@@ -318,6 +324,94 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e), "code": "HOLDINGS_INVALID"}, stream=sys.stderr)
         return 2
+    except Exception as e:  # noqa: BLE001
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
+        return 1
+
+
+def cmd_check_portfolio_ready(args: argparse.Namespace) -> int:
+    """Проверка готовности портфеля без optimize."""
+    run = start_run(
+        "check-portfolio-ready",
+        params={"csv": getattr(args, "csv", "") or None},
+    )
+    try:
+        panel = None
+        if getattr(args, "panel_tickers", ""):
+            panel = {
+                t.strip().upper()
+                for t in args.panel_tickers.split(",")
+                if t.strip()
+            }
+        mapping = None
+        if getattr(args, "isin_map", ""):
+            mapping = json.loads(Path(args.isin_map).read_text(encoding="utf-8"))
+        csv_path = Path(args.csv) if getattr(args, "csv", "") else None
+        report = check_portfolio_ready(
+            csv_path=csv_path,
+            panel_tickers=panel,
+            isin_to_ticker=mapping,
+        )
+        code = 0 if report.get("ok") else 2
+        finish_run(
+            run["run_id"],
+            status="ok" if code == 0 else "error",
+            result={"ok": report.get("ok"), "blockers": report.get("blockers")},
+            error=None if code == 0 else "; ".join(report.get("blockers") or []),
+        )
+        _print_json(report)
+        return code
+    except Exception as e:  # noqa: BLE001
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
+        return 1
+
+
+def cmd_import_user_prices(args: argparse.Namespace) -> int:
+    """Импорт пользовательского CSV в runtime-кэш (без сети/ISS)."""
+    run = start_run(
+        "import-user-prices",
+        params={"csv": args.csv, "skip_staleness": bool(args.skip_staleness)},
+    )
+    try:
+        with pipeline_lock("pipeline"):
+            src = Path(args.csv)
+            meta = validate_user_price_csv(src)
+            cache = runtime_cache_path()
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, cache)
+            sidecar = cache.with_suffix(cache.suffix + ".meta.json")
+            payload = {
+                "action": "imported_user_prices",
+                "source": "user_csv",
+                "cache": str(cache),
+                "meta_path": str(sidecar),
+                "skip_staleness": bool(args.skip_staleness),
+                "iss_enabled": iss_enabled(),
+                **meta,
+                "hint": (
+                    "Set MOEX_DATA_SOURCE=user_csv and "
+                    f"MOEX_USER_PRICES_PATH={cache}"
+                    + (
+                        " MOEX_USER_CSV_SKIP_STALENESS=true"
+                        if args.skip_staleness
+                        else ""
+                    )
+                ),
+            }
+            atomic_write_json(sidecar, payload)
+        finish_run(run["run_id"], status="ok", result=payload)
+        _print_json(payload)
+        return 0
+    except PipelineLockError as e:
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
+        return 3
+    except DataSourceError as e:
+        finish_run(run["run_id"], status="blocked", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
+        return 4
     except Exception as e:  # noqa: BLE001
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e)}, stream=sys.stderr)
@@ -667,6 +761,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write data/portfolio/holdings.json (never writes /workspace/invest)",
     )
     p_adp.set_defaults(func=cmd_adapt_portfolio)
+
+    p_ready = sub.add_parser(
+        "check-portfolio-ready",
+        help="Preflight portfolio CSV/holdings without running optimizer",
+    )
+    p_ready.add_argument("--csv", default="", help="Analyst portfolio CSV path")
+    p_ready.add_argument(
+        "--isin-map",
+        default="",
+        help="Optional JSON map {ISIN: ticker}",
+    )
+    p_ready.add_argument(
+        "--panel-tickers",
+        default="",
+        help="Comma-separated tickers expected in price panel",
+    )
+    p_ready.set_defaults(func=cmd_check_portfolio_ready)
+
+    p_imp = sub.add_parser(
+        "import-user-prices",
+        help="Import user-provided historical price CSV into runtime cache (no ISS)",
+    )
+    p_imp.add_argument("--csv", required=True, help="Local price panel CSV (; TRADEDATE)")
+    p_imp.add_argument(
+        "--skip-staleness",
+        action="store_true",
+        help="Attest historical panel; pair with MOEX_USER_CSV_SKIP_STALENESS=true",
+    )
+    p_imp.set_defaults(func=cmd_import_user_prices)
 
     p_val = sub.add_parser("validate-data", help="Validate active price source freshness")
     p_val.add_argument(

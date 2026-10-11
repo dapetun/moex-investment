@@ -173,11 +173,17 @@ def main() -> int:
     opt_run = Path(opt["report_json"]).stem
     target_path = clone / "data" / "outbox" / "last_target.json"
     target = json.loads(target_path.read_text(encoding="utf-8"))
+    tw = target.get("weights") or {}
+    wvals = [float(v) for v in tw.values()]
+    weight_spread = (max(wvals) - min(wvals)) if wvals else 0.0
     note(
         "last_target",
         target.get("success") is True
-        and abs(sum(target["weights"].values()) - 1.0) < 1e-6,
-        weights=target.get("weights"),
+        and abs(sum(wvals) - 1.0) < 1e-6
+        and weight_spread > 0.05,
+        weights=tw,
+        weight_spread=weight_spread,
+        sharpe=opt.get("sharpe") or target.get("sharpe"),
     )
 
     # 4) compare

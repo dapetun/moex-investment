@@ -27,6 +27,16 @@ MOEX_ISS_ENABLED=false MOEX_DATA_SOURCE=fixture \
 - Тестовые события → `data/processed/events_test/` (не `events/`).
 - Контроль: fingerprint `data/` рабочего репо до/после не меняется.
 
+## Панель цен
+
+По умолчанию используется `data/fixtures/synthetic_prices.csv`
+(= `synthetic_prices_diversified.csv`): различные μ/σ и умеренные корреляции.
+Старая вырожденная панель сохранена как `synthetic_prices_equal_drift.csv`
+для регрессии.
+
+Ожидаемое поведение Max Sharpe: **неравные** целевые веса, Sharpe порядка O(1),
+не ~10²–10³.
+
 ## Ограничения
 
 - Не включает ISS, broker, cron, merge PR, правки профилей ботов.
