@@ -1,30 +1,27 @@
-# Фрагмент для profile Аналитика (не применять без approve)
+# Сниппет для описания профиля Аналитика (не применять без разрешения)
+
+Целевой файл на стороне бота: **`profile.json` → поле `description`**
+(не отдельный `profile.md`). Вставить после явного approve владельца
+и решения по определению «настоящего оптимизатора» (см. SKILL.md v2).
+
+Также в список навыков профиля (строка порядка skills / D08) добавить
+`cli-analyst-bundle`.
+
+Предлагаемый абзац (русский):
 
 ```text
-## CLI portfolio analysis (optional skill)
-
-When the user explicitly asks to analyse their portfolio via CLI:
-use skill `cli-analyst-bundle`.
-
-Contract: moex_analyst_bundle.v1
-(docs in dapetun/moex-investment: ANALYST_BUNDLE_CONTRACT.md).
-
-Never enable optimizer.yaml. Never call MOEX ISS.
-Never place real portfolio/price files into git or public handoffs.
+## CLI moex_portfolio (опционально)
+Когда Даниил в своём чате явно просит CLI-анализ / bundle / optimize через
+moex_portfolio — skill cli-analyst-bundle.
+python -m moex_portfolio optimize --allow-optimize с успешным run_id
+считается настоящим оптимизатором для целевых весов из bundle.
+optimizer.yaml с enabled: false не включать; это другой путь.
+Сделки и ордера — никогда.
+Формат отчёта: 9 разделов analysis_spec.md §5.
+Реальные CSV портфеля/цен в репозиторий и публичные handoff не класть.
+Запрет ISS действует только внутри CLI-цепочки этого skill, не для
+штатного QC профиля.
 ```
 
-Unified diff (иллюстративный, целевой путь зависит от workspace бота):
-
-```diff
---- a/profile.md
-+++ b/profile.md
-@@
-+## CLI portfolio analysis (optional skill)
-+
-+When the user explicitly asks to analyse their portfolio via CLI:
-+use skill `cli-analyst-bundle`.
-+
-+Contract: moex_analyst_bundle.v1.
-+Never enable optimizer.yaml. Never call MOEX ISS.
-+Never place real portfolio/price files into git or public handoffs.
-```
+Откат: удалить абзац из `description`; убрать имя skill из D08;
+удалить skill-папку.

@@ -81,10 +81,36 @@ MOEX_ISS_ENABLED=false python scripts/dry_run_real_shaped_analysis.py
 
 ## Чек-лист портфеля (для пользователя)
 
-См. раздел в итоговом ответе чата / шаблон `docs/templates/portfolio_input_template.csv`.
+Шаблон полей: `docs/templates/portfolio_input_template.csv` (подставьте свои
+SECID/ISIN; шаблонные EXA* не использовать как реальные).
 
-## Чек-лист ценовой панели
+Положите файл **вне репозитория**, например `%USERPROFILE%\moex-private\portfolio.csv`.
 
-Формат `;`, колонка `TRADEDATE`, столбцы `SECID` и опционально `SECID_VALUE`.
-≥20 торговых дней, без дубликатов дат, цены > 0, дневной скачок ≤ 80%,
-все SECID портфеля присутствуют.
+| # | Проверка |
+|---|----------|
+| 1 | Колонки: `as_of_date`, `account_label`, `ticker`, `isin`, `secid`, `board`, `security_type`, `quantity`, `market_value`, `weight`, `notes` |
+| 2 | `secid` = канонический SECID Мосбиржи для каждой позиции |
+| 3 | Несколько счетов: один SECID на разных `account_label` допускается (консолидация) |
+| 4 | Сумма `weight` ≈ 1.0 (допуск входа ±0.005) |
+| 5 | `market_value` согласован с количеством и ценой; при расхождении с weight >1 п.п. - исправить до прогона |
+| 6 | Нет дублей одной и той же позиции на одном счёте с разными weight-базами |
+| 7 | Файл не в git, не в `docs/examples/`, не в публичном handoff |
+
+Предпроверка: `check-portfolio-ready --csv … --panel-tickers SECID1,SECID2,…`
+
+## Чек-лист ценовой панели (user_csv)
+
+Положите файл **вне репозитория**, например `%USERPROFILE%\moex-private\prices.csv`.
+
+| # | Проверка |
+|---|----------|
+| 1 | Разделитель `;`, колонка дат `TRADEDATE`, далее столбцы по SECID (и опционально `SECID_VALUE`) |
+| 2 | Все SECID из портфеля присутствуют как колонки |
+| 3 | ≥20 торговых дней непрерывной истории (лучше больше) |
+| 4 | Нет дубликатов дат; цены > 0; без нечисловых ячеек |
+| 5 | Дневной скачок цены ≤ 80% (иначе QC отклонит) |
+| 6 | Последняя дата близка к последней сессии **или** Даниил явно аттестует историчность (`--skip-staleness`) |
+| 7 | Это настоящий пользовательский CSV, не `data/fixtures/synthetic_prices*.csv` |
+| 8 | Файл не в git и не в публичном handoff |
+
+Импорт: `import-user-prices --csv … --require-tickers …` при `MOEX_ISS_ENABLED=false`.
