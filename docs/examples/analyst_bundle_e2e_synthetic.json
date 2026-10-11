@@ -4,7 +4,7 @@
   "synthetic": true,
   "disclaimer": "Синтетические/тестовые данные. Не является инвестиционной рекомендацией по реальному портфелю. Количественные поля должны совпадать с артефактами CLI; качественные оценки радара — отдельный блок без пересчёта ожидаемой доходности.",
   "holdings": {
-    "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\portfolio\\holdings.json",
+    "path": "<local>/data/portfolio/holdings.json",
     "file_status": "ok",
     "as_of": "2026-10-10",
     "cash": 0.0,
@@ -82,7 +82,7 @@
     "iss_enabled": false
   },
   "target": {
-    "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\last_target.json",
+    "path": "<local>/data/outbox/last_target.json",
     "payload": {
       "weights": {
         "AAA": 0.2916171370691636,
@@ -130,15 +130,15 @@
       "BBB",
       "CCC"
     ],
-    "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\last_target.json",
+    "target_path": "<local>/data/outbox/last_target.json",
     "holdings_empty": false,
     "target_success": true,
-    "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140530Z-49bd0952.json",
-    "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140530Z-49bd0952.md"
+    "report_json": "<local>/data/outbox/reports/20261011T140530Z-49bd0952.json",
+    "report_md": "<local>/data/outbox/reports/20261011T140530Z-49bd0952.md"
   },
   "events": {
-    "processed_dir": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_test",
-    "history_dir": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_history_test",
+    "processed_dir": "<local>/data/processed/events_test",
+    "history_dir": "<local>/data/processed/events_history_test",
     "history_files": 0,
     "items": [
       {
@@ -160,7 +160,7 @@
           "rationale": "Синтетическая оценка для e2e."
         },
         "bond_assessment": null,
-        "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_test\\TEST-EV-20261011-AAA-001.json"
+        "path": "<local>/data/processed/events_test/TEST-EV-20261011-AAA-001.json"
       },
       {
         "event_id": "TEST-EV-20261011-BBB-001",
@@ -181,7 +181,7 @@
           "rationale": "Синтетическое событие риска для e2e."
         },
         "bond_assessment": null,
-        "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_test\\TEST-EV-20261011-BBB-001.json"
+        "path": "<local>/data/processed/events_test/TEST-EV-20261011-BBB-001.json"
       }
     ],
     "ingest": {
@@ -195,16 +195,16 @@
       "partial": false,
       "ok": true,
       "test_mode": true,
-      "inbox": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\inbox\\events_test",
-      "processed": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_test",
-      "history": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\events_history_test",
-      "inbox_archive": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\inbox_archive_test",
+      "inbox": "<local>/data/inbox/events_test",
+      "processed": "<local>/data/processed/events_test",
+      "history": "<local>/data/processed/events_history_test",
+      "inbox_archive": "<local>/data/processed/inbox_archive_test",
       "archives": [
-        "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\processed\\inbox_archive_test\\e2e_radar_test_batch__20261011T140531Z.json"
+        "<local>/data/processed/inbox_archive_test/e2e_radar_test_batch__20261011T140531Z.json"
       ],
-      "source_path": "C:\\My_Data\\Files\\Hobby\\GitHub\\moex-investment\\tests\\fixtures\\e2e_radar_test_batch.json",
+      "source_path": "C:/My_Data/Files/Hobby/GitHub/moex-investment/tests/fixtures/e2e_radar_test_batch.json",
       "staged_from_source": [
-        "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\inbox\\events_test\\e2e_radar_test_batch.json"
+        "<local>/data/inbox/events_test/e2e_radar_test_batch.json"
       ],
       "details": [
         {
@@ -236,7 +236,7 @@
   "runs": [
     {
       "run_id": "20261011T140528Z-a268ccda",
-      "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\runs\\20261011T140528Z-a268ccda.json",
+      "path": "<local>/data/outbox/runs/20261011T140528Z-a268ccda.json",
       "record": {
         "run_id": "20261011T140528Z-a268ccda",
         "command": "optimize",
@@ -291,15 +291,15 @@
             "note": "synthetic/fixture source: not treated as live market quotes; staleness check skipped"
           },
           "target_updated": true,
-          "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\last_target.json",
-          "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140528Z-a268ccda.json",
-          "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140528Z-a268ccda.md"
+          "target_path": "<local>/data/outbox/last_target.json",
+          "report_json": "<local>/data/outbox/reports/20261011T140528Z-a268ccda.json",
+          "report_md": "<local>/data/outbox/reports/20261011T140528Z-a268ccda.md"
         }
       }
     },
     {
       "run_id": "20261011T140530Z-49bd0952",
-      "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\runs\\20261011T140530Z-49bd0952.json",
+      "path": "<local>/data/outbox/runs/20261011T140530Z-49bd0952.json",
       "record": {
         "run_id": "20261011T140530Z-49bd0952",
         "command": "compare",
@@ -341,11 +341,11 @@
             "BBB",
             "CCC"
           ],
-          "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\last_target.json",
+          "target_path": "<local>/data/outbox/last_target.json",
           "holdings_empty": false,
           "target_success": true,
-          "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140530Z-49bd0952.json",
-          "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-l2qanp7d\\repo\\data\\outbox\\reports\\20261011T140530Z-49bd0952.md"
+          "report_json": "<local>/data/outbox/reports/20261011T140530Z-49bd0952.json",
+          "report_md": "<local>/data/outbox/reports/20261011T140530Z-49bd0952.md"
         }
       }
     }
