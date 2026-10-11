@@ -82,7 +82,15 @@ def check_portfolio_ready(
                         f"{adapter.get('weight_sum_before')}, нормализована адаптером"
                     )
                 missing = adapter.get("missing_from_panel") or []
-                if missing:
+                if panel_tickers is None:
+                    add(
+                        "panel_coverage",
+                        False,
+                        "панель не задана (--panel-tickers); "
+                        "ready_for_optimize требует явного списка тикеров панели",
+                        block=True,
+                    )
+                elif missing:
                     add(
                         "panel_coverage",
                         False,
@@ -90,13 +98,7 @@ def check_portfolio_ready(
                         block=True,
                     )
                 else:
-                    add(
-                        "panel_coverage",
-                        True,
-                        "все тикеры в панели"
-                        if panel_tickers
-                        else "панель не задана (проверка покрытия пропущена)",
-                    )
+                    add("panel_coverage", True, "все тикеры в панели")
                 # согласованность weight vs MV
                 _check_weight_vs_mv(holdings, add, warnings)
             except (PortfolioAdapterError, HoldingsValidationError, OSError) as e:
