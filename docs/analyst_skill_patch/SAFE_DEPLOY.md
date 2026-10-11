@@ -53,11 +53,28 @@ sha256sum "$BK"/* > "$BK/SHA256SUMS"
 `cp -a "$BK" "/workspace/handoffs/backups/analyst-cli-$STAMP/"`
 (`/tmp` может очиститься при перезагрузке).
 
-## 3. Контрольные суммы до изменения
+## 3. Контрольные суммы и MANIFEST_BEFORE (до любых правок)
 
-Записать в `$BK/BEFORE.txt` вывод шага 1 (включая description-хеш,
-QC SKILL.md и `run_optimizer.example.py`) + `ls -la` skill-каталогов.  
-Снять `MANIFEST_BEFORE.txt` по процедуре шага 6 **до** любых правок.
+Записать в `$BK/BEFORE.txt` вывод шага 1 + `ls -la` skill-каталогов.
+
+Снять манифест **один раз**, без перезаписи (`noclobber`):
+
+```bash
+AGENT=/home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de
+WF=/home/box/agent-data/workflows
+set -o noclobber
+(
+  find "$WF" "$AGENT" -type f \
+    ! -name 'store.db' ! -name 'store.db-wal' ! -name 'store.db-shm' \
+    | sort | xargs -r sha256sum
+  find /workspace/invest/portfolio/optimizer /workspace/invest/config \
+       /workspace/invest/schemas /workspace/invest/handoff \
+       /workspace/invest/portfolio -maxdepth 1 -type f 2>/dev/null | sort | xargs -r sha256sum
+  sha256sum /workspace/invest/news/events_latest.json
+) > "$BK/MANIFEST_BEFORE.txt"
+set +o noclobber
+# Аналитик на время deploy должен быть неактивен (иначе store.* шумит).
+```
 
 ## 4. Применение только утверждённых изменений
 
@@ -84,49 +101,43 @@ QC SKILL.md и `run_optimizer.example.py`) + `ls -la` skill-каталогов.
   нового skill; путь каталога `skill-<id>` записан в `$BK/CLI_SKILL_PATH.txt`.
 - `optimizer.yaml`: `enabled: false`, command пуст (байт-в-байт или тот же sha256).
 
-## 6. Проверка отсутствия побочных изменений (манифест sha256)
+## 6. Проверка отсутствия побочных изменений (MANIFEST_AFTER)
 
-Не использовать `find -newer` + широкий grep по `skill-*` (ложные срабатывания
-на mtime `workflows/` и маскировка чужих skills). Вместо этого — манифест.
+Только **после** шага 5. `MANIFEST_BEFORE.txt` уже снят на шаге 3 и
+не перезаписывать.
 
 ```bash
 AGENT=/home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de
 WF=/home/box/agent-data/workflows
-CLI_PATH=$(cat "$BK/CLI_SKILL_PATH.txt")
+test -f "$BK/MANIFEST_BEFORE.txt" || { echo "MANIFEST_BEFORE missing"; exit 1; }
+CLI_PATH=$(realpath -m "$(cat "$BK/CLI_SKILL_PATH.txt")")
+# N16: новый skill = …/workflows/skill-<digits>, отсутствовал в BEFORE, не OPT/POS/QC/EV
+case "$CLI_PATH" in
+  "$WF"/skill-[0-9]*) ;;
+  *) echo "bad CLI_SKILL_PATH: $CLI_PATH"; exit 1 ;;
+esac
+echo "$CLI_PATH" | grep -Eq '^/home/box/agent-data/workflows/skill-[0-9]+$' \
+  || { echo "CLI_PATH not canonical skill id dir"; exit 1; }
+for known in skill-1791618014068 skill-1791618006478 skill-1791617999761 \
+             skill-1791617992518 skill-1791617966204 skill-1791617976741; do
+  [ "$CLI_PATH" = "$WF/$known" ] && { echo "CLI_PATH collides with existing $known"; exit 1; }
+done
+grep -F " $CLI_PATH/" "$BK/MANIFEST_BEFORE.txt" && { echo "CLI_PATH existed before"; exit 1; }
 
-# До apply (шаг 3): полный манифест workflows + агент + критичные invest-файлы
 (
-  find "$WF" "$AGENT" -type f | sort | xargs -r sha256sum
-  sha256sum \
-    /workspace/invest/portfolio/optimizer/config/optimizer.yaml \
-    /workspace/invest/portfolio/optimizer/run_optimizer.example.py \
-    /workspace/invest/portfolio/analysis_spec.md \
-    /workspace/invest/news/events_latest.json
-) > "$BK/MANIFEST_BEFORE.txt"
-
-# После apply: тот же снимок
-(
-  find "$WF" "$AGENT" -type f | sort | xargs -r sha256sum
-  sha256sum \
-    /workspace/invest/portfolio/optimizer/config/optimizer.yaml \
-    /workspace/invest/portfolio/optimizer/run_optimizer.example.py \
-    /workspace/invest/portfolio/analysis_spec.md \
-    /workspace/invest/news/events_latest.json
+  find "$WF" "$AGENT" -type f \
+    ! -name 'store.db' ! -name 'store.db-wal' ! -name 'store.db-shm' \
+    | sort | xargs -r sha256sum
+  find /workspace/invest/portfolio/optimizer /workspace/invest/config \
+       /workspace/invest/schemas /workspace/invest/handoff \
+       /workspace/invest/portfolio -maxdepth 1 -type f 2>/dev/null | sort | xargs -r sha256sum
+  sha256sum /workspace/invest/news/events_latest.json
 ) > "$BK/MANIFEST_AFTER.txt"
 
-# Разрешённые отличия AFTER vs BEFORE (точные пути):
-# - $AGENT/profile.json
-# - $WF/skill-1791618014068/SKILL.md
-# - $WF/skill-1791618006478/SKILL.md
-# - $WF/skill-1791617999761/SKILL.md
-# - /workspace/invest/portfolio/analysis_spec.md (если SPEC в наборе A)
-# - любые файлы под $CLI_PATH/ (новый skill)
-# Всё остальное, включая skills радара и events_latest.json — должно совпадать.
-
-BK="$BK" python3 - <<'PY'
+BK="$BK" CLI_PATH="$CLI_PATH" python3 - <<'PY'
 import os, pathlib, sys
 bk = pathlib.Path(os.environ["BK"])
-cli = pathlib.Path((bk / "CLI_SKILL_PATH.txt").read_text().strip())
+cli = pathlib.Path(os.environ["CLI_PATH"]).resolve()
 allowed_exact = {
     "/home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de/profile.json",
     "/home/box/agent-data/workflows/skill-1791618014068/SKILL.md",
@@ -134,6 +145,8 @@ allowed_exact = {
     "/home/box/agent-data/workflows/skill-1791617999761/SKILL.md",
     "/workspace/invest/portfolio/analysis_spec.md",
 }
+# Не сверяем штатный шум радара/отчётов (не в манифесте):
+# news/digest*, news/events_history.jsonl, logs/, portfolio/reports/
 def load(p):
     d = {}
     for line in p.read_text().splitlines():
@@ -143,14 +156,16 @@ def load(p):
 before, after = load(bk/"MANIFEST_BEFORE.txt"), load(bk/"MANIFEST_AFTER.txt")
 bad = []
 for f, h in after.items():
-    if f == str(cli) or f.startswith(str(cli) + "/"):
+    fp = pathlib.Path(f)
+    if fp == cli or cli in fp.parents:
         continue
     if f in allowed_exact:
         continue
     if before.get(f) != h:
-        bad.append(("changed", f, before.get(f), h))
+        bad.append(("changed_or_new", f, before.get(f), h))
 for f in before:
-    if f not in after and not (f == str(cli) or f.startswith(str(cli) + "/")):
+    fp = pathlib.Path(f)
+    if f not in after and not (fp == cli or cli in fp.parents):
         if f not in allowed_exact:
             bad.append(("missing", f, before[f], None))
 if bad:
@@ -163,9 +178,8 @@ PY
 ```
 
 Любое unexpected → rollback.  
-`events_latest.json` и skills радара **не** в allow-list: их изменение во время deploy = стоп.
-
-Манифест BEFORE снимать **до** шага 4; AFTER — после шага 5.
+`events_latest.json`, skills радара, `invest/config`, schemas, handoff —
+в манифесте и **не** в allow-list.
 
 ## 7. One-shot на fixture (явный запрос Даниила)
 
