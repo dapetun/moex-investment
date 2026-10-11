@@ -28,7 +28,7 @@ TICKERS = ["RSH1", "RSH2", "RSH3"]
 
 def _make_prices(path: Path, *, n: int = 90, seed: int = 42) -> None:
     rng = np.random.default_rng(seed)
-    dates = pd.bdate_range(end="2026-10-09", periods=n)
+    dates = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=n)
     mu = np.array([0.12, 0.07, 0.04]) / 252
     vol = np.array([0.25, 0.16, 0.10]) / np.sqrt(252)
     corr = np.array([[1, 0.35, 0.15], [0.35, 1, 0.25], [0.15, 0.25, 1]])

@@ -14,12 +14,18 @@
 
 ```bash
 # На box, read-only:
+AGENT=/home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de
+WF=/home/box/agent-data/workflows
 sha256sum \
-  /home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de/profile.json \
-  /home/box/agent-data/workflows/skill-1791618014068/SKILL.md \
-  /home/box/agent-data/workflows/skill-1791618006478/SKILL.md \
+  "$AGENT/profile.json" \
+  "$WF/skill-1791618014068/SKILL.md" \
+  "$WF/skill-1791618006478/SKILL.md" \
+  "$WF/skill-1791617999761/SKILL.md" \
   /workspace/invest/portfolio/optimizer/config/optimizer.yaml \
+  /workspace/invest/portfolio/optimizer/run_optimizer.example.py \
   /workspace/invest/portfolio/analysis_spec.md
+# description отдельно (если jq доступен):
+python3 -c "import json,hashlib,pathlib; p=pathlib.Path('$AGENT/profile.json'); d=json.loads(p.read_text())['description']; print(hashlib.sha256(d.encode()).hexdigest(), 'description')"
 ```
 
 Сверить с `live_patches/AUDIT_BASELINE.md`.  
@@ -43,14 +49,15 @@ cp -a /workspace/invest/portfolio/optimizer/run_optimizer.example.py "$BK/"
 sha256sum "$BK"/* > "$BK/SHA256SUMS"
 ```
 
-Предпочтительно также скопировать `$BK` в устойчивое место
-(`/workspace/handoffs/backups/analyst-cli-$STAMP/`), т.к. `/tmp` может
-очиститься при перезагрузке.
+Обязательно скопировать `$BK` в устойчивое место:
+`cp -a "$BK" "/workspace/handoffs/backups/analyst-cli-$STAMP/"`
+(`/tmp` может очиститься при перезагрузке).
 
 ## 3. Контрольные суммы до изменения
 
-Записать в `$BK/BEFORE.txt` вывод шага 1 (включая description-хеш и
-`run_optimizer.example.py`) + `ls -la` skill-каталогов.
+Записать в `$BK/BEFORE.txt` вывод шага 1 (включая description-хеш,
+QC SKILL.md и `run_optimizer.example.py`) + `ls -la` skill-каталогов.  
+Снять `MANIFEST_BEFORE.txt` по процедуре шага 6 **до** любых правок.
 
 ## 4. Применение только утверждённых изменений
 
@@ -77,24 +84,88 @@ sha256sum "$BK"/* > "$BK/SHA256SUMS"
   нового skill; путь каталога `skill-<id>` записан в `$BK/CLI_SKILL_PATH.txt`.
 - `optimizer.yaml`: `enabled: false`, command пуст (байт-в-байт или тот же sha256).
 
-## 6. Проверка отсутствия побочных изменений
+## 6. Проверка отсутствия побочных изменений (манифест sha256)
+
+Не использовать `find -newer` + широкий grep по `skill-*` (ложные срабатывания
+на mtime `workflows/` и маскировка чужих skills). Вместо этого — манифест.
 
 ```bash
-test -f "$BK/BEFORE_MARKER" || { echo "BEFORE_MARKER missing"; exit 1; }
-sha256sum /workspace/invest/portfolio/optimizer/config/optimizer.yaml
-# == a9f44c2606b95b42bfb70c1c9400d4e5c39c1ce83f564be5ae3ab746e9c09c83
-FIND_OUT=$(find /workspace/invest \
-  /home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de \
-  /home/box/agent-data/workflows \
-  -newer "$BK/BEFORE_MARKER" 2>&1) || { echo "find failed: $FIND_OUT"; exit 1; }
-echo "$FIND_OUT" | grep -vE 'profile\.json|SKILL\.md|analysis_spec|CLI_SKILL_PATH|skill-[0-9a-f-]+' \
-  > "$BK/UNEXPECTED.txt" || true
-if [ -s "$BK/UNEXPECTED.txt" ]; then
-  echo "Unexpected changes:"; cat "$BK/UNEXPECTED.txt"; exit 1
-fi
+AGENT=/home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de
+WF=/home/box/agent-data/workflows
+CLI_PATH=$(cat "$BK/CLI_SKILL_PATH.txt")
+
+# До apply (шаг 3): полный манифест workflows + агент + критичные invest-файлы
+(
+  find "$WF" "$AGENT" -type f | sort | xargs -r sha256sum
+  sha256sum \
+    /workspace/invest/portfolio/optimizer/config/optimizer.yaml \
+    /workspace/invest/portfolio/optimizer/run_optimizer.example.py \
+    /workspace/invest/portfolio/analysis_spec.md \
+    /workspace/invest/news/events_latest.json
+) > "$BK/MANIFEST_BEFORE.txt"
+
+# После apply: тот же снимок
+(
+  find "$WF" "$AGENT" -type f | sort | xargs -r sha256sum
+  sha256sum \
+    /workspace/invest/portfolio/optimizer/config/optimizer.yaml \
+    /workspace/invest/portfolio/optimizer/run_optimizer.example.py \
+    /workspace/invest/portfolio/analysis_spec.md \
+    /workspace/invest/news/events_latest.json
+) > "$BK/MANIFEST_AFTER.txt"
+
+# Разрешённые отличия AFTER vs BEFORE (точные пути):
+# - $AGENT/profile.json
+# - $WF/skill-1791618014068/SKILL.md
+# - $WF/skill-1791618006478/SKILL.md
+# - $WF/skill-1791617999761/SKILL.md
+# - /workspace/invest/portfolio/analysis_spec.md (если SPEC в наборе A)
+# - любые файлы под $CLI_PATH/ (новый skill)
+# Всё остальное, включая skills радара и events_latest.json — должно совпадать.
+
+BK="$BK" python3 - <<'PY'
+import os, pathlib, sys
+bk = pathlib.Path(os.environ["BK"])
+cli = pathlib.Path((bk / "CLI_SKILL_PATH.txt").read_text().strip())
+allowed_exact = {
+    "/home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de/profile.json",
+    "/home/box/agent-data/workflows/skill-1791618014068/SKILL.md",
+    "/home/box/agent-data/workflows/skill-1791618006478/SKILL.md",
+    "/home/box/agent-data/workflows/skill-1791617999761/SKILL.md",
+    "/workspace/invest/portfolio/analysis_spec.md",
+}
+def load(p):
+    d = {}
+    for line in p.read_text().splitlines():
+        h, f = line.split(None, 1)
+        d[f] = h
+    return d
+before, after = load(bk/"MANIFEST_BEFORE.txt"), load(bk/"MANIFEST_AFTER.txt")
+bad = []
+for f, h in after.items():
+    if f == str(cli) or f.startswith(str(cli) + "/"):
+        continue
+    if f in allowed_exact:
+        continue
+    if before.get(f) != h:
+        bad.append(("changed", f, before.get(f), h))
+for f in before:
+    if f not in after and not (f == str(cli) or f.startswith(str(cli) + "/")):
+        if f not in allowed_exact:
+            bad.append(("missing", f, before[f], None))
+if bad:
+    print("UNEXPECTED:")
+    for row in bad:
+        print(row)
+    sys.exit(1)
+print("manifest ok")
+PY
 ```
 
-Неожиданные файлы → rollback.
+Любое unexpected → rollback.  
+`events_latest.json` и skills радара **не** в allow-list: их изменение во время deploy = стоп.
+
+Манифест BEFORE снимать **до** шага 4; AFTER — после шага 5.
 
 ## 7. One-shot на fixture (явный запрос Даниила)
 
@@ -138,6 +209,10 @@ cp -a "$BK/POS_SKILL.md" /home/box/agent-data/workflows/skill-1791618006478/SKIL
 cp -a "$BK/QC_SKILL.md" /home/box/agent-data/workflows/skill-1791617999761/SKILL.md
 cp -a "$BK/analysis_spec.md" /workspace/invest/portfolio/analysis_spec.md
 CLI_PATH=$(cat "$BK/CLI_SKILL_PATH.txt")
+case "$CLI_PATH" in
+  /home/box/agent-data/workflows/skill-[0-9]*) ;;
+  *) echo "refusing rm -rf: $CLI_PATH"; exit 1 ;;
+esac
 rm -rf "$CLI_PATH"
 # optimizer.yaml не должен был меняться; при отличии — восстановить из $BK
 test "$(sha256sum /workspace/invest/portfolio/optimizer/config/optimizer.yaml | awk '{print $1}')" \

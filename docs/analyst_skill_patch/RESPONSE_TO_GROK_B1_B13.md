@@ -22,12 +22,14 @@
 A1–A17: параметры CLI, единый порядок цепочки, profile.json,
 русский сниппет, критерии one-shot, fail-safe - см. SKILL v2 + DEPLOY.
 
-Дополнение после review `analyst-patch-v2-review-eb6dcee` (ref cur-20261011-1915):
-в SKILL/FRA/DEPLOY закрыты V1 (сверка по `source`/`is_user_csv`, не
-`is_live_market`), V2 (handoff one-shot только fixture), V3 (SHA
-обязателен), B3 (user_csv только после разрешения), V6/V7 (аттестация
-stale + dry-run user_csv в deploy).
+Дополнение после review `analyst-patch-v2-review-eb6dcee` (ref cur-20261011-1915)
+и последующих system review @4d27afb / @f0397dc:
 
-**Вердикт:** diff готов для ревью; **подключать к live нельзя** без
-решения Даниила, дословных правок OPT/POS/profile (V8) и отдельного
-разрешения на реальные файлы.
+- V1/V3/B3/V6/V7/V8 закрыты в пакете `live_patches/` + SAFE_DEPLOY.
+- **V2 устарел:** handoff/радар **никогда** не запускают CLI (ни fixture,
+  ни user_csv) — см. SKILL.md текущей версии, не «one-shot только fixture».
+- BL1/BL2 закрыты (QC patch + запрет handoff CLI); BL3′ — манифест sha256
+  в SAFE_DEPLOY шаге 6.
+
+**Вердикт пакета:** готов к Permission A после ACCEPT независимого review;
+live не применять без отдельного подтверждения. Permission B отдельно.

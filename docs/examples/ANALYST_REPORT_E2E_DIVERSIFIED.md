@@ -120,7 +120,7 @@
 
 Итог контроля качества: **данные пригодны с оговорками** для демонстрации; для решений о ребалансировке — непригодны.
 
-**Повторный прогон (этот компьютер):** `MOEX_ISS_ENABLED=false MOEX_DATA_SOURCE=fixture python scripts/run_e2e_analyst_scenario.py` на чистом клоне, итог `"ok": true`, пакет `/tmp/ar3af/tmp/moex-e2e-analyst-o8_5dlaq/analyst_bundle.json`, запуски `20261011T141032Z-4b7efab3` (оптимизация) и `20261011T141033Z-97aafde8` (сравнение).
+**Повторный прогон (этот компьютер):** `MOEX_ISS_ENABLED=false MOEX_DATA_SOURCE=fixture python scripts/run_e2e_analyst_scenario.py` на чистом клоне, итог `"ok": true`, пакет `<local>/analyst_bundle.json`, запуски `20261011T141032Z-4b7efab3` (оптимизация) и `20261011T141033Z-97aafde8` (сравнение).
 
 **ДЕМОНСТРАЦИЯ — СИНТЕТИЧЕСКИЕ ДАННЫЕ, НЕ ОЦЕНКА РЕАЛЬНОГО ПОРТФЕЛЯ**. Не является инвестиционной рекомендацией.
 

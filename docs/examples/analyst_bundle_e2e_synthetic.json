@@ -202,7 +202,7 @@
       "archives": [
         "<local>/data/processed/inbox_archive_test/e2e_radar_test_batch__20261011T140531Z.json"
       ],
-      "source_path": "C:/My_Data/Files/Hobby/GitHub/moex-investment/tests/fixtures/e2e_radar_test_batch.json",
+      "source_path": "<local>/tests/fixtures/e2e_radar_test_batch.json",
       "staged_from_source": [
         "<local>/data/inbox/events_test/e2e_radar_test_batch.json"
       ],
