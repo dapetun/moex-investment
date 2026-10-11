@@ -29,8 +29,8 @@ python -m moex_portfolio check-portfolio-ready \
 python -m moex_portfolio import-user-prices \
   --csv "$HOME/moex-private/prices.csv" \
   --require-tickers SECID1,SECID2,...
-# при заведомо исторической панели: --skip-staleness
-# и MOEX_USER_CSV_SKIP_STALENESS=true
+# --skip-staleness / MOEX_USER_CSV_SKIP_STALENESS=true —
+# только если Даниил явно аттестовал историчность панели
 
 export MOEX_DATA_SOURCE=user_csv
 export MOEX_USER_PRICES_PATH=<путь из sidecar cache_abs или runtime_cache>
@@ -54,6 +54,8 @@ python -m moex_portfolio compare --min-drift 0.05
 # python -m moex_portfolio ingest-events --source <radar_release.json>
 
 # 7. Bundle
+# --real-data только после явного подтверждения Даниила,
+# что источник — настоящий user_csv (не fixture)
 python -m moex_portfolio build-analyst-bundle \
   --out-dir "$HOME/moex-private/bundle" \
   --real-data \
@@ -69,7 +71,7 @@ python -m moex_portfolio build-analyst-bundle \
 |---|---|
 | check-portfolio-ready blockers | стоп; holdings/target не трогать |
 | import USER_CSV_* | стоп; кэш не обновлять (ошибка до copy при валидации) |
-| validate stale | стоп или явный `--skip-staleness` + env |
+| validate stale | стоп; обход только если Даниил явно аттестовал `--skip-staleness` + env |
 | optimize success=false | `last_target` сохраняется прежний |
 | любой ненулевой exit | не передавать partial bundle Аналитику как успех |
 

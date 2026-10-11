@@ -35,12 +35,18 @@
 1. Скопировать `docs/analyst_skill_patch/cli-analyst-bundle/` в skills.
 2. Внести правки таблицы выше + сниппет.
 3. Закрепить SHA репо в задании one-shot.
-4. Критерий успеха one-shot (синтетика):
+4. Критерий успеха one-shot (синтетика / fixture):
    - exit 0 цепочки; bundle `schema=moex_analyst_bundle.v1`;
-   - в отчёте дословный баннер ДЕМОНСТРАЦИЯ; есть `run_id` / `event_id`;
+   - в отчёте баннер ДЕМОНСТРАЦИЯ (как в POS); есть `run_id` / `event_id`;
    - программная сверка claims (как verify_report) без расхождений;
    - формат 9 разделов SPEC.
-5. Только после (4) - отдельное разрешение на реальные файлы.
+5. Dry-run пути `user_csv` на искусственных данных той же структуры
+   (`scripts/dry_run_real_shaped_analysis.py`, ISS off) — exit 0,
+   все шаги ok, пути в отчёте без абсолютных home.
+6. Только после (4)+(5) — отдельное разрешение на реальные файлы
+   (локально: `%USERPROFILE%\moex-private\…`; на box — путь, который
+   укажет Даниил; штатный `/workspace/invest/portfolio/` не подменять
+   без команды).
 
 ## Rollback
 
