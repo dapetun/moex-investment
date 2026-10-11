@@ -1,8 +1,12 @@
-"""Локальный сквозной smoke Test A/B (синтетика). Не для CI."""
+"""Локальный сквозной smoke Test A/B (синтетика). Не для CI.
+
+Все артефакты пишутся только в ``E2E_ROOT``; каталоги рабочего репо не меняются.
+"""
 
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import sys
@@ -13,11 +17,54 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 import moex_portfolio.cli as cli  # noqa: E402
+import moex_portfolio.config as cfg  # noqa: E402
 import moex_portfolio.events as events  # noqa: E402
 import moex_portfolio.locks as locks  # noqa: E402
 import moex_portfolio.portfolio_state as ps  # noqa: E402
 import moex_portfolio.reporting as reporting  # noqa: E402
 import moex_portfolio.run_journal as rj  # noqa: E402
+
+
+def _fingerprint_repo_data() -> dict[str, str]:
+    """Хэши отслеживаемых файлов data/ до/после (контроль утечек)."""
+    base = ROOT / "data"
+    out: dict[str, str] = {}
+    if not base.exists():
+        return out
+    for path in sorted(base.rglob("*")):
+        if not path.is_file():
+            continue
+        # пропускаем кэш/gitignore runtime — смотрим на tracked+processed артефакты
+        rel = str(path.relative_to(ROOT)).replace("\\", "/")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+        out[rel] = digest
+    return out
+
+
+def _patch_all_paths(root: Path) -> None:
+    data = root / "data"
+    os.environ["MOEX_EVENT_DATA_ROOT"] = str(data)
+    cfg.DATA_DIR = data
+    ps.HOLDINGS_DIR = data / "portfolio"
+    rj.RUNS_DIR = data / "outbox" / "runs"
+    locks.LOCKS_DIR = data / "locks"
+    reporting.REPORTS_DIR = data / "outbox" / "reports"
+    cli.LAST_TARGET_PATH = data / "outbox" / "last_target.json"
+    events.apply_event_dirs(test_mode=False, data_root=data)
+    for d in [
+        ps.HOLDINGS_DIR,
+        rj.RUNS_DIR,
+        locks.LOCKS_DIR,
+        reporting.REPORTS_DIR,
+        events.INBOX_DIR,
+        events.PROCESSED_DIR,
+        events.REJECTED_DIR,
+        events.HISTORY_DIR,
+        events.INBOX_ARCHIVE_DIR,
+        events.BATCH_META_DIR,
+        cli.LAST_TARGET_PATH.parent,
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
 
 
 def main() -> int:
@@ -27,25 +74,8 @@ def main() -> int:
     os.environ["MOEX_DATA_SOURCE"] = "fixture"
     os.environ["MOEX_FIXTURE_PATH"] = str(fixture)
 
-    ps.HOLDINGS_DIR = root / "portfolio"
-    rj.RUNS_DIR = root / "runs"
-    locks.LOCKS_DIR = root / "locks"
-    reporting.REPORTS_DIR = root / "reports"
-    cli.LAST_TARGET_PATH = root / "outbox" / "last_target.json"
-    events.INBOX_DIR = root / "inbox"
-    events.PROCESSED_DIR = root / "processed"
-    events.REJECTED_DIR = root / "rejected"
-    for d in [
-        ps.HOLDINGS_DIR,
-        rj.RUNS_DIR,
-        locks.LOCKS_DIR,
-        reporting.REPORTS_DIR,
-        events.INBOX_DIR,
-        events.PROCESSED_DIR,
-        events.REJECTED_DIR,
-        cli.LAST_TARGET_PATH.parent,
-    ]:
-        d.mkdir(parents=True, exist_ok=True)
+    before = _fingerprint_repo_data()
+    _patch_all_paths(root)
 
     results: dict = {}
     results["show_empty"] = cli.main(["show-portfolio"])
@@ -123,6 +153,18 @@ def main() -> int:
     n_proc2 = len(list(events.PROCESSED_DIR.glob("*.json")))
     results["events_accepted_stable"] = n_proc == n_proc2 == 2
 
+    # контроль: history/archive только под E2E_ROOT
+    results["history_under_root"] = all(
+        str(p).startswith(str(root)) for p in events.HISTORY_DIR.glob("*.json")
+    ) or not list(events.HISTORY_DIR.glob("*.json"))
+    results["archive_under_root"] = all(
+        str(p).startswith(str(root)) for p in events.INBOX_ARCHIVE_DIR.glob("*.json")
+    )
+    after_fp = _fingerprint_repo_data()
+    results["repo_data_unchanged"] = before == after_fp
+    if before != after_fp:
+        results["repo_data_diff"] = sorted(set(before) ^ set(after_fp))[:20]
+
     print(json.dumps(results, ensure_ascii=False, indent=2))
     assert results["show_empty"] == 0
     assert results["validate"] == 0
@@ -137,6 +179,8 @@ def main() -> int:
     assert results["bad_max_weight"] == 2
     assert results["iss_blocked"] == 4
     assert results["events_accepted_stable"] is True
+    assert results["archive_under_root"] is True
+    assert results["repo_data_unchanged"] is True
     print("E2E_OK")
     return 0
 

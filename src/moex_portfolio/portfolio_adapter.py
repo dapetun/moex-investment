@@ -194,9 +194,10 @@ def _merge_same_secid(rows: list[dict[str, Any]]) -> dict[str, Any]:
             f"(code=PORTFOLIO_CONSOLIDATION_AMBIGUOUS)"
         )
 
-    # market_value — предпочтительная база (один денежный знаменатель).
-    use_mv = all(has_mv)
-    use_w = all(has_w) and not use_mv
+    # Явные portfolio-level weight имеют приоритет над MV (N1 / PORTFOLIO_CONTRACT §3).
+    # MV как база весов — только когда weight отсутствует у всех строк группы.
+    use_w = all(has_w)
+    use_mv = all(has_mv) and not use_w
     if not use_mv and not use_w and not all(has_s):
         raise PortfolioAdapterError(
             f"cannot consolidate {ticker}: need shared weight or market_value basis "
@@ -222,13 +223,15 @@ def _merge_same_secid(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     if all(has_s):
         merged["shares"] = sum(float(r["shares"]) for r in rows)
-    if use_mv:
+    if all(has_mv):
+        # MV сохраняем как метаданные даже при весовой базе.
         merged["market_value"] = sum(float(r["market_value"]) for r in rows)
-        merged["_weight_basis"] = "market_value"
-    elif use_w:
-        # Веса аналитика — доли одного портфеля; сумма по счетам корректна.
+    if use_w:
+        # Доли одного портфеля (общий знаменатель); сумма по счетам корректна.
         merged["weight"] = sum(float(r["weight"]) for r in rows)
         merged["_weight_basis"] = "portfolio_weight"
+    elif use_mv:
+        merged["_weight_basis"] = "market_value"
     if any(r.get("missing_from_panel") for r in rows):
         merged["missing_from_panel"] = True
     return merged
@@ -256,7 +259,15 @@ def consolidate_positions(positions: list[dict[str, Any]]) -> list[dict[str, Any
 
 
 def _apply_market_value_weights(positions: list[dict[str, Any]]) -> None:
-    """Пересчитать weight из market_value, если база консолидации — MV."""
+    """Пересчитать weight из market_value только для MV-базы без явных weight.
+
+    Если у любой позиции уже есть явный weight (portfolio-level), MV не
+    подменяет веса и не обходит PORTFOLIO_WEIGHT_SUM (дефект N1).
+    """
+    if any(p.get("weight") is not None for p in positions):
+        for p in positions:
+            p.pop("_weight_basis", None)
+        return
     if not any(p.get("_weight_basis") == "market_value" for p in positions):
         return
     if not all(p.get("market_value") is not None for p in positions):

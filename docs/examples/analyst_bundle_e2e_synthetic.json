@@ -1,0 +1,342 @@
+{
+  "schema": "moex_analyst_bundle.v1",
+  "generated_at": "2026-10-11T08:51:36.232640+00:00",
+  "synthetic": true,
+  "disclaimer": "Синтетические/тестовые данные. Не является инвестиционной рекомендацией по реальному портфелю. Количественные поля должны совпадать с артефактами CLI; качественные оценки радара — отдельный блок без пересчёта ожидаемой доходности.",
+  "holdings": {
+    "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\portfolio\\holdings.json",
+    "file_status": "ok",
+    "as_of": "2026-10-10",
+    "cash": 0.0,
+    "positions": [
+      {
+        "ticker": "AAA",
+        "note": "synthetic account A; synthetic account B",
+        "shares": 180.0,
+        "weight": 0.38,
+        "isin": "RU00AAA00001",
+        "secid": "AAA",
+        "board": "TQBR",
+        "security_type": "share",
+        "accounts": [
+          {
+            "account_label": "broker_a",
+            "weight": 0.2,
+            "shares": 100.0,
+            "market_value": 105000.0
+          },
+          {
+            "account_label": "broker_b",
+            "weight": 0.18,
+            "shares": 80.0,
+            "market_value": 84000.0
+          }
+        ],
+        "market_value": 189000.0
+      },
+      {
+        "ticker": "BBB",
+        "note": "synthetic",
+        "shares": 50.0,
+        "weight": 0.25,
+        "isin": "RU00BBB00002",
+        "secid": "BBB",
+        "board": "TQBR",
+        "security_type": "share",
+        "account_label": "broker_a",
+        "market_value": 75000.0
+      },
+      {
+        "ticker": "CCC",
+        "note": "synthetic",
+        "shares": 200.0,
+        "weight": 0.37,
+        "isin": "RU00CCC00003",
+        "secid": "CCC",
+        "board": "TQBR",
+        "security_type": "share",
+        "account_label": "broker_a",
+        "market_value": 147000.0
+      }
+    ],
+    "weight_sum_policy": "canonical",
+    "weight_normalized_on_load": null,
+    "weight_sum_before": null
+  },
+  "validation": {
+    "ok": true,
+    "status": "ok",
+    "last_data_date": "2026-10-09",
+    "age_days": 2,
+    "rows": 60,
+    "columns": 6,
+    "issues": [],
+    "as_of": "2026-10-11",
+    "max_staleness_days": 5,
+    "check_staleness": false,
+    "min_price_coverage": 0.8,
+    "source": "fixture",
+    "is_live_market": false,
+    "note": "synthetic/fixture source: not treated as live market quotes; staleness check skipped",
+    "iss_enabled": false
+  },
+  "target": {
+    "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\last_target.json",
+    "payload": {
+      "weights": {
+        "AAA": 0.3333333333333333,
+        "BBB": 0.3333333333333333,
+        "CCC": 0.3333333333333333
+      },
+      "tickers": [
+        "AAA",
+        "BBB",
+        "CCC"
+      ],
+      "success": true,
+      "source": "fixture",
+      "is_live_market": false
+    }
+  },
+  "compare": {
+    "needs_rebalance": true,
+    "needs_action": true,
+    "allocation_kind": "rebalance",
+    "max_abs_drift": 0.08333333333333331,
+    "min_drift": 0.05,
+    "diffs": [
+      {
+        "ticker": "AAA",
+        "current": 0.38,
+        "target": 0.3333333333333333,
+        "drift": 0.04666666666666669
+      },
+      {
+        "ticker": "BBB",
+        "current": 0.25,
+        "target": 0.3333333333333333,
+        "drift": 0.08333333333333331
+      },
+      {
+        "ticker": "CCC",
+        "current": 0.37,
+        "target": 0.3333333333333333,
+        "drift": 0.03666666666666668
+      }
+    ],
+    "tickers": [
+      "AAA",
+      "BBB",
+      "CCC"
+    ],
+    "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\last_target.json",
+    "holdings_empty": false,
+    "target_success": true,
+    "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085130Z-6751ebb4.json",
+    "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085130Z-6751ebb4.md"
+  },
+  "events": {
+    "processed_dir": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_test",
+    "history_dir": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_history_test",
+    "history_files": 0,
+    "items": [
+      {
+        "event_id": "TEST-EV-20261011-AAA-001",
+        "ticker": "AAA",
+        "event_type": "dividend_recommendation",
+        "event_date": "2026-10-10",
+        "published_at": "2026-10-10T12:00:00+03:00",
+        "source": "synthetic-prime",
+        "url": "https://example.invalid/aaa/div-001",
+        "title": "СД рекомендовал дивиденд (СИНТЕТИКА AAA).",
+        "company": "Synthetic Issuer AAA",
+        "materiality": "medium",
+        "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_test\\TEST-EV-20261011-AAA-001.json"
+      },
+      {
+        "event_id": "TEST-EV-20261011-BBB-001",
+        "ticker": "BBB",
+        "event_type": "guidance_change",
+        "event_date": "2026-10-09",
+        "published_at": "2026-10-09T10:00:00+03:00",
+        "source": "synthetic-prime",
+        "url": "https://example.invalid/bbb/guide-001",
+        "title": "Компания снизила прогноз (СИНТЕТИКА BBB).",
+        "company": "Synthetic Issuer BBB",
+        "materiality": "high",
+        "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_test\\TEST-EV-20261011-BBB-001.json"
+      }
+    ],
+    "ingest": {
+      "accepted": 2,
+      "updated": 0,
+      "rejected": 0,
+      "duplicate_skipped": 0,
+      "stale_skipped": 0,
+      "conflict": 0,
+      "skipped_semantics": 1,
+      "partial": false,
+      "ok": true,
+      "test_mode": true,
+      "inbox": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\inbox\\events_test",
+      "processed": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_test",
+      "history": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\events_history_test",
+      "inbox_archive": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\inbox_archive_test",
+      "archives": [
+        "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\processed\\inbox_archive_test\\e2e_radar_test_batch__20261011T085131Z.json"
+      ],
+      "source_path": "C:\\My_Data\\Files\\Hobby\\GitHub\\moex-investment\\tests\\fixtures\\e2e_radar_test_batch.json",
+      "staged_from_source": [
+        "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\inbox\\events_test\\e2e_radar_test_batch.json"
+      ],
+      "details": [
+        {
+          "file": "e2e_radar_test_batch.json",
+          "index": 0,
+          "event_id": "TEST-EV-20261011-AAA-001",
+          "dest": "TEST-EV-20261011-AAA-001.json",
+          "status": "accepted",
+          "event_type": "dividend_recommendation"
+        },
+        {
+          "file": "e2e_radar_test_batch.json",
+          "index": 1,
+          "event_id": "TEST-EV-20261011-BBB-001",
+          "dest": "TEST-EV-20261011-BBB-001.json",
+          "status": "accepted",
+          "event_type": "guidance_change"
+        },
+        {
+          "file": "e2e_radar_test_batch.json",
+          "index": 2,
+          "event_id": "TEST-EV-20261011-CCC-001",
+          "status": "skipped_novelty_duplicate",
+          "reason": "novelty=duplicate duplicate_of=TEST-EV-20261001-CCC-000"
+        }
+      ]
+    }
+  },
+  "runs": [
+    {
+      "run_id": "20261011T085128Z-38eec4a4",
+      "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\runs\\20261011T085128Z-38eec4a4.json",
+      "record": {
+        "run_id": "20261011T085128Z-38eec4a4",
+        "command": "optimize",
+        "params": {
+          "mode": "universe",
+          "max_weight": 0.5,
+          "source": "fixture",
+          "iss_enabled": false
+        },
+        "status": "ok",
+        "started_at": "2026-10-11T08:51:28.751793+00:00",
+        "finished_at": "2026-10-11T08:51:28.815791+00:00",
+        "error": null,
+        "result": {
+          "mode": "universe",
+          "tickers": [
+            "AAA",
+            "BBB",
+            "CCC"
+          ],
+          "weights": {
+            "AAA": 0.3333333333333333,
+            "BBB": 0.3333333333333333,
+            "CCC": 0.3333333333333333
+          },
+          "return": 0.24496506598041579,
+          "volatility": 0.0002537236594865924,
+          "sharpe": 965.4797919756495,
+          "success": true,
+          "message": "Optimization terminated successfully",
+          "risk_free_rate": 0.0,
+          "max_weight": 0.5,
+          "cov_method": "ledoit_wolf",
+          "min_turnover": 0.0,
+          "source": "fixture",
+          "is_live_market": false,
+          "validation": {
+            "ok": true,
+            "status": "ok",
+            "last_data_date": "2026-10-09",
+            "age_days": 2,
+            "rows": 60,
+            "columns": 6,
+            "issues": [],
+            "as_of": "2026-10-11",
+            "max_staleness_days": 5,
+            "check_staleness": false,
+            "min_price_coverage": 0.8,
+            "source": "fixture",
+            "is_live_market": false,
+            "note": "synthetic/fixture source: not treated as live market quotes; staleness check skipped"
+          },
+          "target_updated": true,
+          "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\last_target.json",
+          "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085128Z-38eec4a4.json",
+          "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085128Z-38eec4a4.md"
+        }
+      }
+    },
+    {
+      "run_id": "20261011T085130Z-6751ebb4",
+      "path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\runs\\20261011T085130Z-6751ebb4.json",
+      "record": {
+        "run_id": "20261011T085130Z-6751ebb4",
+        "command": "compare",
+        "params": {
+          "min_drift": 0.05
+        },
+        "status": "ok",
+        "started_at": "2026-10-11T08:51:30.318819+00:00",
+        "finished_at": "2026-10-11T08:51:30.329624+00:00",
+        "error": null,
+        "result": {
+          "needs_rebalance": true,
+          "needs_action": true,
+          "allocation_kind": "rebalance",
+          "max_abs_drift": 0.08333333333333331,
+          "min_drift": 0.05,
+          "diffs": [
+            {
+              "ticker": "AAA",
+              "current": 0.38,
+              "target": 0.3333333333333333,
+              "drift": 0.04666666666666669
+            },
+            {
+              "ticker": "BBB",
+              "current": 0.25,
+              "target": 0.3333333333333333,
+              "drift": 0.08333333333333331
+            },
+            {
+              "ticker": "CCC",
+              "current": 0.37,
+              "target": 0.3333333333333333,
+              "drift": 0.03666666666666668
+            }
+          ],
+          "tickers": [
+            "AAA",
+            "BBB",
+            "CCC"
+          ],
+          "target_path": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\last_target.json",
+          "holdings_empty": false,
+          "target_success": true,
+          "report_json": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085130Z-6751ebb4.json",
+          "report_md": "C:\\Users\\danii\\AppData\\Local\\Temp\\moex-e2e-analyst-xvx9wl3d\\repo\\data\\outbox\\reports\\20261011T085130Z-6751ebb4.md"
+        }
+      }
+    }
+  ],
+  "notes": "E2E synthetic scenario for Portfolio Analyst one-shot handoff",
+  "analyst_instructions": [
+    "Разделяй числа CLI (weights, drift, QC) и качественные оценки радара.",
+    "Ссылайся на event_id, run_id и пути артефактов.",
+    "Не выдумывай доходности, цены и торговые рекомендации.",
+    "Явно укажи ограничения синтетических данных."
+  ]
+}

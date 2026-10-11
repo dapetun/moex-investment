@@ -131,3 +131,52 @@ def test_consolidation_mixed_basis_rejected(tmp_path):
     )
     with pytest.raises(PortfolioAdapterError, match="PORTFOLIO_MIXED_WEIGHTS"):
         adapt_analyst_csv(p)
+
+
+def test_n1_multi_account_mv_does_not_bypass_weight_sum(tmp_path):
+    """N1: при наличии weight MV не пересчитывает веса и не обходит Σ-проверку."""
+    p = tmp_path / "p.csv"
+    # Σ weight = 0.60 (вне ±0.005), но MV согласованы и давали бы Σ=1.0
+    p.write_text(
+        "secid,account_label,weight,quantity,market_value\n"
+        "TSTA,broker_a,0.19,1000,100000\n"
+        "TSTA,broker_b,0.19,1000,100000\n"
+        "TSTB,broker_a,0.11,500,50000\n"
+        "TSTC,broker_a,0.11,400,40000\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioAdapterError, match="PORTFOLIO_WEIGHT_SUM"):
+        adapt_analyst_csv(p)
+
+
+def test_multi_account_weights_preferred_over_mv(tmp_path):
+    p = tmp_path / "p.csv"
+    p.write_text(
+        "secid,account_label,weight,quantity,market_value\n"
+        "TSTA,broker_a,0.20,1000,999999\n"
+        "TSTA,broker_b,0.20,800,1\n"
+        "TSTB,broker_a,0.25,500,1\n"
+        "TSTC,broker_a,0.35,200,1\n",
+        encoding="utf-8",
+    )
+    h = adapt_analyst_csv(p)
+    by_t = {x["ticker"]: x for x in h["positions"]}
+    assert abs(by_t["TSTA"]["weight"] - 0.40) < 1e-9
+    assert abs(by_t["TSTB"]["weight"] - 0.25) < 1e-9
+    assert abs(by_t["TSTC"]["weight"] - 0.35) < 1e-9
+    assert h["adapter"]["weight_normalized"] is False
+
+
+def test_mv_only_consolidation_still_works(tmp_path):
+    p = tmp_path / "p.csv"
+    p.write_text(
+        "secid,account_label,quantity,market_value\n"
+        "TSTA,broker_a,1000,40000\n"
+        "TSTA,broker_b,500,20000\n"
+        "TSTB,broker_a,100,40000\n",
+        encoding="utf-8",
+    )
+    h = adapt_analyst_csv(p)
+    by_t = {x["ticker"]: x for x in h["positions"]}
+    assert abs(by_t["TSTA"]["weight"] - 0.60) < 1e-9
+    assert abs(by_t["TSTB"]["weight"] - 0.40) < 1e-9

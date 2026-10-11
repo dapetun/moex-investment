@@ -136,7 +136,15 @@ def main() -> int:
     src = work / "events_latest.json"
     shutil.copy2(FIXTURE_EVENTS, src)
     code, out, err = _run(
-        [py, "-m", "moex_portfolio", "ingest-events", "--source", str(src)],
+        [
+            py,
+            "-m",
+            "moex_portfolio",
+            "ingest-events",
+            "--source",
+            str(src),
+            "--test-events",
+        ],
         clone,
         env,
     )
@@ -155,7 +163,8 @@ def main() -> int:
     )
 
     # revision of SBER-like first accepted event if present
-    processed = clone / "data" / "processed" / "events"
+    # тестовый режим пишет в events_test
+    processed = clone / "data" / "processed" / "events_test"
     # Пилот: TEST-EV-…; legacy/боевой: EV-… — оба пространства имён.
     targets = sorted(processed.glob("TEST-EV-*.json")) or sorted(
         processed.glob("EV-*.json")
@@ -243,7 +252,15 @@ def main() -> int:
             encoding="utf-8",
         )
         code, out, err = _run(
-            [py, "-m", "moex_portfolio", "ingest-events", "--source", str(rev_path)],
+            [
+                py,
+                "-m",
+                "moex_portfolio",
+                "ingest-events",
+                "--source",
+                str(rev_path),
+                "--test-events",
+            ],
             clone,
             env,
         )
@@ -300,7 +317,15 @@ def main() -> int:
     bad_path = work / "bad_published.json"
     bad_path.write_text(json.dumps(bad), encoding="utf-8")
     code, out, err = _run(
-        [py, "-m", "moex_portfolio", "ingest-events", "--source", str(bad_path)],
+        [
+            py,
+            "-m",
+            "moex_portfolio",
+            "ingest-events",
+            "--source",
+            str(bad_path),
+            "--test-events",
+        ],
         clone,
         env,
     )
@@ -387,7 +412,15 @@ def main() -> int:
 
     # 5) redelivery idempotent
     code, out, err = _run(
-        [py, "-m", "moex_portfolio", "ingest-events", "--source", str(src)],
+        [
+            py,
+            "-m",
+            "moex_portfolio",
+            "ingest-events",
+            "--source",
+            str(src),
+            "--test-events",
+        ],
         clone,
         env,
     )

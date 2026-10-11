@@ -27,6 +27,16 @@ WEIGHT_SUM_TOLERANCE = 1e-6
 # Вход CSV аналитика: допуск шире; адаптер может явно нормализовать (см. portfolio_adapter).
 ANALYST_WEIGHT_SUM_TOLERANCE = 5e-3
 
+# Политика суммы весов в holdings.json.
+# ``canonical`` — строгий допуск 1e-6 (по умолчанию и для target).
+# ``legacy_analyst`` — явный маркер старого файла: при load допускается ±0.005
+# с нормализацией только в памяти (файл на диск не перезаписывается).
+WEIGHT_SUM_POLICY_CANONICAL = "canonical"
+WEIGHT_SUM_POLICY_LEGACY_ANALYST = "legacy_analyst"
+_WEIGHT_SUM_POLICIES = frozenset(
+    {WEIGHT_SUM_POLICY_CANONICAL, WEIGHT_SUM_POLICY_LEGACY_ANALYST}
+)
+
 # Метаданные позиции, сохраняемые при load/save (PORTFOLIO_CONTRACT / RESULT 1936).
 _POSITION_OPTIONAL_KEYS = (
     "isin",
@@ -63,7 +73,50 @@ def holdings_path() -> Path:
     return HOLDINGS_DIR / HOLDINGS_FILENAME
 
 
-def validate_holdings(data: dict[str, Any]) -> None:
+def _weight_sum_policy(data: dict[str, Any]) -> str:
+    policy = data.get("weight_sum_policy", WEIGHT_SUM_POLICY_CANONICAL)
+    if policy is None:
+        return WEIGHT_SUM_POLICY_CANONICAL
+    if not isinstance(policy, str) or policy not in _WEIGHT_SUM_POLICIES:
+        raise HoldingsValidationError(
+            f"unknown weight_sum_policy={policy!r}; "
+            f"allowed: {sorted(_WEIGHT_SUM_POLICIES)} "
+            f"(code=HOLDINGS_WEIGHT_POLICY_INVALID)"
+        )
+    return policy
+
+
+def _normalize_legacy_weights_in_memory(
+    data: dict[str, Any],
+) -> tuple[float | None, bool]:
+    """Нормализовать веса legacy_analyst в памяти (±0.005).
+
+    Не записывает файл. Target/optimize результаты сюда не попадают —
+    у них нет ``weight_sum_policy=legacy_analyst``.
+    """
+    positions = data.get("positions") or []
+    weighted = [p for p in positions if isinstance(p, dict) and p.get("weight") is not None]
+    if not weighted or len(weighted) != len(positions):
+        return None, False
+    total = sum(float(p["weight"]) for p in weighted)
+    gap = abs(total - 1.0)
+    if gap <= WEIGHT_SUM_TOLERANCE:
+        return total, False
+    if gap > ANALYST_WEIGHT_SUM_TOLERANCE:
+        raise HoldingsValidationError(
+            f"legacy weights sum to {total:.6f}, expected 1.0 "
+            f"±{ANALYST_WEIGHT_SUM_TOLERANCE} (code=HOLDINGS_WEIGHT_SUM)"
+        )
+    for p in weighted:
+        p["weight"] = float(p["weight"]) / total
+    return total, True
+
+
+def validate_holdings(
+    data: dict[str, Any],
+    *,
+    weight_tolerance: float | None = None,
+) -> None:
     """Проверка структуры holdings.
 
     Raises:
@@ -79,6 +132,8 @@ def validate_holdings(data: dict[str, Any]) -> None:
     if not isinstance(positions, list):
         raise HoldingsValidationError("'positions' must be a list")
 
+    _weight_sum_policy(data)
+
     cash = data.get("cash", 0.0)
     if cash is None:
         cash = 0.0
@@ -86,6 +141,8 @@ def validate_holdings(data: dict[str, Any]) -> None:
         require_nonnegative_finite(cash, "cash")
     except NumericValidationError as e:
         raise HoldingsValidationError(str(e)) from e
+
+    tol = WEIGHT_SUM_TOLERANCE if weight_tolerance is None else weight_tolerance
 
     seen: set[str] = set()
     weights: list[float] = []
@@ -123,10 +180,10 @@ def validate_holdings(data: dict[str, Any]) -> None:
                 raise HoldingsValidationError(str(e)) from e
             weights.append(w)
 
-    if weights and abs(sum(weights) - 1.0) > WEIGHT_SUM_TOLERANCE:
+    if weights and abs(sum(weights) - 1.0) > tol:
         raise HoldingsValidationError(
             f"weights sum to {sum(weights):.6f}, expected 1.0 "
-            f"±{WEIGHT_SUM_TOLERANCE} (code=HOLDINGS_WEIGHT_SUM)"
+            f"±{tol} (code=HOLDINGS_WEIGHT_SUM)"
         )
 
 
@@ -165,19 +222,29 @@ def _normalize(data: dict[str, Any]) -> dict[str, Any]:
     status = data.get("file_status")
     if status not in {"ok", "empty", "missing"}:
         status = "ok" if positions else "empty"
-    return {
+    out: dict[str, Any] = {
         "as_of": data.get("as_of"),
         "cash": float(cash),
         "positions": positions,
         "file_status": status,
     }
+    policy = data.get("weight_sum_policy")
+    if policy in _WEIGHT_SUM_POLICIES:
+        out["weight_sum_policy"] = policy
+    return out
 
 
 def save_holdings(data: dict[str, Any], path: Path | None = None) -> Path:
-    """Сохранить holdings в JSON после валидации."""
-    validate_holdings(data)
+    """Сохранить holdings в JSON после валидации.
+
+    Сохранение всегда требует канонической суммы весов (±1e-6).
+    ``legacy_analyst`` не ослабляет запись — только чтение в памяти.
+    """
+    validate_holdings(data, weight_tolerance=WEIGHT_SUM_TOLERANCE)
     normalized = _normalize(data)
-    validate_holdings(normalized)
+    # На диске канон: убираем legacy-маркер, чтобы не маскировать будущие ошибки.
+    normalized.pop("weight_sum_policy", None)
+    validate_holdings(normalized, weight_tolerance=WEIGHT_SUM_TOLERANCE)
 
     target = path or holdings_path()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -195,6 +262,10 @@ def load_holdings(path: Path | None = None) -> dict[str, Any]:
     Файл отсутствует → ``file_status=missing`` (позиции []).
     Файл с пустыми positions → ``file_status=empty``.
     Непустой портфель → ``file_status=ok``.
+
+    При явном ``weight_sum_policy=legacy_analyst`` допускается сумма ±0.005
+    с нормализацией **только в возвращаемом объекте**; исходный файл не меняется.
+    Отклонение суммы само по себе не делает файл legacy.
     """
     target = path or holdings_path()
     if not target.exists():
@@ -202,12 +273,37 @@ def load_holdings(path: Path | None = None) -> dict[str, Any]:
         return empty_holdings(file_status="missing")
 
     raw = json.loads(target.read_text(encoding="utf-8"))
-    validate_holdings(raw)
+    if not isinstance(raw, dict):
+        raise HoldingsValidationError("holdings must be a dict")
+
+    policy = _weight_sum_policy(raw)
     normalized = _normalize(raw)
+    normalized["weight_sum_policy"] = policy
+
+    weight_sum_before: float | None = None
+    weight_normalized_on_load = False
+    if policy == WEIGHT_SUM_POLICY_LEGACY_ANALYST:
+        # Сначала мягкая проверка, затем нормализация в памяти.
+        validate_holdings(normalized, weight_tolerance=ANALYST_WEIGHT_SUM_TOLERANCE)
+        weight_sum_before, weight_normalized_on_load = _normalize_legacy_weights_in_memory(
+            normalized
+        )
+        validate_holdings(normalized, weight_tolerance=WEIGHT_SUM_TOLERANCE)
+    else:
+        validate_holdings(normalized, weight_tolerance=WEIGHT_SUM_TOLERANCE)
+
     if not normalized["positions"]:
         normalized["file_status"] = "empty"
     else:
         normalized["file_status"] = "ok"
+    if weight_sum_before is not None:
+        normalized["weight_sum_before"] = weight_sum_before
+        normalized["weight_normalized_on_load"] = weight_normalized_on_load
+        normalized["weight_sum_after"] = sum(
+            float(p["weight"])
+            for p in normalized["positions"]
+            if p.get("weight") is not None
+        )
     return normalized
 
 

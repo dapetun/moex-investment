@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -21,6 +22,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import config as _config
 from .config import DATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,95 @@ HISTORY_DIR = DATA_DIR / "processed" / "events_history"
 REJECTED_DIR = DATA_DIR / "processed" / "rejected"
 INBOX_ARCHIVE_DIR = DATA_DIR / "processed" / "inbox_archive"
 BATCH_META_DIR = DATA_DIR / "processed" / "batches"
+
+# Тестовые выпуски (is_test / TEST-EV-) пишутся только в *_test пути.
+TEST_EVENT_ID_PREFIX = "TEST-EV-"
+_EVENT_DATA_ROOT = DATA_DIR
+
+
+def apply_event_dirs(
+    *,
+    test_mode: bool = False,
+    data_root: Path | None = None,
+) -> dict[str, Path]:
+    """Переключить каталоги inbox/processed (prod vs test).
+
+    В тестовом режиме все артефакты уходят в отдельные ``*_test`` пути,
+    чтобы не загрязнять обычное ``processed/events/``.
+    """
+    global INBOX_DIR, PROCESSED_DIR, HISTORY_DIR, REJECTED_DIR
+    global INBOX_ARCHIVE_DIR, BATCH_META_DIR, _EVENT_DATA_ROOT
+
+    # ``config.DATA_DIR`` читаем динамически — тесты могут monkeypatch'ить.
+    root = Path(data_root) if data_root is not None else Path(_config.DATA_DIR)
+    _EVENT_DATA_ROOT = root
+    if test_mode:
+        INBOX_DIR = root / "inbox" / "events_test"
+        PROCESSED_DIR = root / "processed" / "events_test"
+        HISTORY_DIR = root / "processed" / "events_history_test"
+        REJECTED_DIR = root / "processed" / "rejected_test"
+        INBOX_ARCHIVE_DIR = root / "processed" / "inbox_archive_test"
+        BATCH_META_DIR = root / "processed" / "batches_test"
+    else:
+        INBOX_DIR = root / "inbox" / "events"
+        PROCESSED_DIR = root / "processed" / "events"
+        HISTORY_DIR = root / "processed" / "events_history"
+        REJECTED_DIR = root / "processed" / "rejected"
+        INBOX_ARCHIVE_DIR = root / "processed" / "inbox_archive"
+        BATCH_META_DIR = root / "processed" / "batches"
+    return {
+        "inbox": INBOX_DIR,
+        "processed": PROCESSED_DIR,
+        "history": HISTORY_DIR,
+        "rejected": REJECTED_DIR,
+        "inbox_archive": INBOX_ARCHIVE_DIR,
+        "batches": BATCH_META_DIR,
+    }
+
+
+def event_id_is_test(event_id: object) -> bool:
+    """True, если event_id в тестовом namespace TEST-EV-."""
+    return isinstance(event_id, str) and event_id.startswith(TEST_EVENT_ID_PREFIX)
+
+
+def classify_release(raw: Any) -> str:
+    """Классифицировать выпуск: ``test`` | ``prod`` | ``mixed``.
+
+    Тест: ``is_test: true`` на обёртке и/или все event_id с префиксом TEST-EV-.
+    Mixed: часть id тестовые, часть нет, при ``is_test`` не true.
+    """
+    if not isinstance(raw, dict):
+        return "prod"
+    batch_test = raw.get("is_test") is True
+    try:
+        items = extract_event_list(raw)
+    except EventValidationError:
+        return "test" if batch_test else "prod"
+
+    ids = [
+        item.get("event_id")
+        for item in items
+        if isinstance(item, dict) and item.get("event_id")
+    ]
+    if not ids:
+        return "test" if batch_test else "prod"
+
+    test_flags = [event_id_is_test(i) for i in ids]
+    if batch_test:
+        return "test"
+    if all(test_flags):
+        return "test"
+    if any(test_flags):
+        return "mixed"
+    return "prod"
+
+
+class EventIngestGateError(ValueError):
+    """Отказ ingest до записи в хранилище (тестовый/боевой режим)."""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 REQUIRED_FIELDS = ("event_type", "title", "url", "published_at", "source")
 LEGACY_PREFIXES = ("disclosure_", "dividend_")
@@ -602,10 +693,41 @@ def _should_skip_radar_semantics(item: dict[str, Any]) -> tuple[str, str] | None
     return None
 
 
+def _gate_release_class(
+    kind: str,
+    *,
+    test_mode: bool,
+    label: str,
+) -> None:
+    """Отклонить недопустимую комбинацию test/prod до записи в хранилище."""
+    if kind == "mixed":
+        raise EventIngestGateError(
+            f"{label}: mixed test/prod event_id in one release "
+            f"(code=EVENT_TEST_PROD_MIXED)",
+            code="EVENT_TEST_PROD_MIXED",
+        )
+    if kind == "test" and not test_mode:
+        raise EventIngestGateError(
+            f"{label}: test release requires --test-events "
+            f"(is_test and/or {TEST_EVENT_ID_PREFIX}* event_id); "
+            f"refusing to write into production processed/events "
+            f"(code=EVENT_TEST_MODE_REQUIRED)",
+            code="EVENT_TEST_MODE_REQUIRED",
+        )
+    if kind == "prod" and test_mode:
+        raise EventIngestGateError(
+            f"{label}: production release cannot be ingested with --test-events "
+            f"(code=EVENT_PROD_IN_TEST_MODE)",
+            code="EVENT_PROD_IN_TEST_MODE",
+        )
+
+
 def ingest_events(
     *,
     source_path: Path | str | None = None,
     keep_source: bool = True,
+    test_mode: bool = False,
+    data_root: Path | str | None = None,
 ) -> dict[str, Any]:
     """Прочитать inbox (и/или ``source_path`` радара) → processed.
 
@@ -613,9 +735,50 @@ def ingest_events(
     ``keep_source=True``). Файлы из inbox после обработки уходят в
     ``processed/inbox_archive/``, а не удаляются без следа.
 
+    Тестовые выпуски (``is_test: true`` и/или ``TEST-EV-*``) по умолчанию
+    запрещены в обычном ``processed/events/``. Нужен ``test_mode=True``
+    (CLI: ``--test-events``) — тогда используются отдельные ``*_test`` пути.
+
     Повтор event_id с той же идентичностью и изменившимися оценками →
     ``updated`` (история + новая current). Смена идентичности → ``conflict``.
     """
+    env_root = os.environ.get("MOEX_EVENT_DATA_ROOT", "").strip()
+    root = Path(data_root) if data_root is not None else (
+        Path(env_root) if env_root else None
+    )
+
+    # Переключаем каталоги при test_mode / data_root / MOEX_EVENT_DATA_ROOT.
+    # Иначе сохраняем текущие пути (monkeypatch в тестах).
+    if test_mode or root is not None:
+        apply_event_dirs(test_mode=test_mode, data_root=root)
+
+    # Классификация ДО создания/записи в prod-хранилище.
+    if source_path is not None:
+        src = Path(source_path)
+        if not src.exists():
+            raise FileNotFoundError(f"radar source not found: {src}")
+        try:
+            raw_src = json.loads(src.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise EventIngestGateError(
+                f"source is not valid JSON: {e} (code=EVENT_SOURCE_INVALID_JSON)",
+                code="EVENT_SOURCE_INVALID_JSON",
+            ) from e
+        kind = classify_release(raw_src)
+        _gate_release_class(kind, test_mode=test_mode, label=f"source {src.name}")
+
+    # Предпросмотр inbox без записи в processed.
+    if INBOX_DIR.exists():
+        for path in sorted(INBOX_DIR.glob("*.json")):
+            try:
+                raw_inbox = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue  # битые файлы отклонит основной цикл в rejected
+            kind = classify_release(raw_inbox)
+            _gate_release_class(
+                kind, test_mode=test_mode, label=f"inbox {path.name}"
+            )
+
     INBOX_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
@@ -626,8 +789,6 @@ def ingest_events(
     staged_from_source: list[Path] = []
     if source_path is not None:
         src = Path(source_path)
-        if not src.exists():
-            raise FileNotFoundError(f"radar source not found: {src}")
         dest = INBOX_DIR / src.name
         shutil.copy2(src, dest)
         staged_from_source.append(dest)
@@ -905,6 +1066,7 @@ def ingest_events(
         "skipped_semantics": skipped_semantics,
         "partial": partial,
         "ok": not partial,
+        "test_mode": test_mode,
         "inbox": str(INBOX_DIR),
         "processed": str(PROCESSED_DIR),
         "history": str(HISTORY_DIR),

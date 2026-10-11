@@ -13,11 +13,13 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
+from . import config as _config
+from .analyst_bundle import build_analyst_bundle, write_analyst_bundle
 from .compare import compare_weights
 from .config import DATA_DIR, MIN_TURNOVER
 from .data_quality import validate_for_optimize
 from .data_sources import DataSourceError, FixtureDataSource, get_data_source
-from .events import ingest_events
+from .events import EventIngestGateError, ingest_events
 from .io_util import atomic_write_json
 from .locks import PipelineLockError, pipeline_lock
 from .numeric import (
@@ -382,15 +384,22 @@ def cmd_ingest_events(args: argparse.Namespace) -> int:
 
     Частичный отказ (rejected>0) → код 2, даже если часть событий принята.
     ``--source`` копирует выпуск радара в inbox, оригинал не удаляет.
+    Тестовые выпуски требуют ``--test-events`` (отдельные ``*_test`` каталоги).
     """
     source = (getattr(args, "source", None) or "").strip() or None
+    test_mode = bool(getattr(args, "test_events", False))
     run = start_run(
         "ingest-events",
-        params={"source": source} if source else {},
+        params={"source": source, "test_events": test_mode},
     )
     try:
         with pipeline_lock("pipeline"):
-            report = ingest_events(source_path=source, keep_source=True)
+            report = ingest_events(
+                source_path=source,
+                keep_source=True,
+                test_mode=test_mode,
+                data_root=_config.DATA_DIR,
+            )
         code = 0 if not report.get("partial") else 2
         finish_run(
             run["run_id"],
@@ -407,9 +416,94 @@ def cmd_ingest_events(args: argparse.Namespace) -> int:
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e)}, stream=sys.stderr)
         return 3
+    except EventIngestGateError as e:
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json(
+            {"error": str(e), "code": e.code, "ok": False},
+            stream=sys.stderr,
+        )
+        return 2
     except FileNotFoundError as e:
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e), "code": "SOURCE_NOT_FOUND"}, stream=sys.stderr)
+        return 2
+    except Exception as e:  # noqa: BLE001
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
+        return 1
+
+
+def cmd_build_analyst_bundle(args: argparse.Namespace) -> int:
+    """Собрать пакет артефактов CLI для одноразового задания Аналитику."""
+    run = start_run(
+        "build-analyst-bundle",
+        params={
+            "target": getattr(args, "target", "") or None,
+            "compare_json": getattr(args, "compare_json", "") or None,
+            "validation_json": getattr(args, "validation_json", "") or None,
+            "ingest_json": getattr(args, "ingest_json", "") or None,
+            "test_events": bool(getattr(args, "test_events", False)),
+        },
+    )
+    try:
+        with pipeline_lock("pipeline"):
+            def _load_opt(path_str: str) -> dict[str, Any] | None:
+                if not path_str:
+                    return None
+                p = Path(path_str)
+                if not p.exists():
+                    raise FileNotFoundError(f"artifact not found: {p}")
+                return json.loads(p.read_text(encoding="utf-8"))
+
+            compare_payload = _load_opt(getattr(args, "compare_json", "") or "")
+            validation_payload = _load_opt(getattr(args, "validation_json", "") or "")
+            ingest_payload = _load_opt(getattr(args, "ingest_json", "") or "")
+            run_ids = [
+                x.strip()
+                for x in (getattr(args, "run_ids", "") or "").split(",")
+                if x.strip()
+            ]
+            target = (getattr(args, "target", "") or "").strip() or None
+            test_mode = bool(getattr(args, "test_events", False))
+            from . import events as events_mod
+
+            if test_mode:
+                events_mod.apply_event_dirs(test_mode=True)
+
+            bundle = build_analyst_bundle(
+                target_path=Path(target) if target else None,
+                compare_payload=compare_payload,
+                validation_payload=validation_payload,
+                ingest_payload=ingest_payload,
+                run_ids=run_ids,
+                synthetic=not bool(getattr(args, "real_data", False)),
+                notes=getattr(args, "notes", None),
+            )
+            out_dir = (getattr(args, "out_dir", "") or "").strip()
+            paths = write_analyst_bundle(
+                bundle,
+                out_dir=Path(out_dir) if out_dir else None,
+                bundle_id=getattr(args, "bundle_id", None) or run["run_id"],
+            )
+            result = {
+                "ok": True,
+                "bundle_id": paths["json"].stem,
+                "bundle_json": str(paths["json"]),
+                "bundle_md": str(paths["md"]),
+                "schema": bundle.get("schema"),
+                "events_count": len((bundle.get("events") or {}).get("items") or []),
+                "holdings_status": (bundle.get("holdings") or {}).get("file_status"),
+            }
+        finish_run(run["run_id"], status="ok", result=result)
+        _print_json(result)
+        return 0
+    except PipelineLockError as e:
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
+        return 3
+    except (OSError, json.JSONDecodeError, HoldingsValidationError, FileNotFoundError) as e:
+        finish_run(run["run_id"], status="error", error=str(e))
+        _print_json({"error": str(e)}, stream=sys.stderr)
         return 2
     except Exception as e:  # noqa: BLE001
         finish_run(run["run_id"], status="error", error=str(e))
@@ -632,11 +726,47 @@ def build_parser() -> argparse.ArgumentParser:
             "Copied into data/inbox/events/; original is never deleted."
         ),
     )
+    p_ing.add_argument(
+        "--test-events",
+        action="store_true",
+        help=(
+            "Allow test releases (is_test=true and/or TEST-EV-* ids); "
+            "writes to separate *_test directories under data/"
+        ),
+    )
     p_ing.set_defaults(func=cmd_ingest_events)
 
     p_rep = sub.add_parser("report", help="Write MD/JSON report for a journal run_id")
     p_rep.add_argument("--run-id", required=True, help="Existing run_id from outbox/runs")
     p_rep.set_defaults(func=cmd_report)
+
+    p_bun = sub.add_parser(
+        "build-analyst-bundle",
+        help="Assemble CLI artifacts JSON for one-shot Portfolio Analyst handoff",
+    )
+    p_bun.add_argument("--target", default="", help="Path to last_target.json")
+    p_bun.add_argument("--compare-json", default="", help="Saved compare result JSON")
+    p_bun.add_argument("--validation-json", default="", help="Saved validate-data JSON")
+    p_bun.add_argument("--ingest-json", default="", help="Saved ingest-events report JSON")
+    p_bun.add_argument(
+        "--run-ids",
+        default="",
+        help="Comma-separated journal run_id list to embed",
+    )
+    p_bun.add_argument(
+        "--test-events",
+        action="store_true",
+        help="Read events from test storage (*_test paths)",
+    )
+    p_bun.add_argument("--out-dir", default="", help="Output directory for bundle files")
+    p_bun.add_argument("--bundle-id", default="", help="Optional bundle id / filename stem")
+    p_bun.add_argument("--notes", default="", help="Free-form note for the analyst")
+    p_bun.add_argument(
+        "--real-data",
+        action="store_true",
+        help="Mark bundle as non-synthetic (default: synthetic=true)",
+    )
+    p_bun.set_defaults(func=cmd_build_analyst_bundle)
 
     return parser
 

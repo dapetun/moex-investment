@@ -134,8 +134,12 @@ Legacy CLI: префиксы `disclosure_*` / `dividend_*` и короткие �
   (например `TEST-EV-20261009-SBER-001`), без пересечения с боевыми `EV-…`.
   В JSON Schema `event_id` — строка без regex; префикс `TEST-` допустим
   и не требует правки боевой схемы.
-- Каталог `processed/events/` общий для тестовых и боевых id (MVP).
-  Разделение — соглашением имён (`TEST-EV-…`); флаг `is_test` у пилотного
-  боевого выпуска радара тоже может быть `true`, поэтому по нему нельзя
-  отфильтровать каталог. Отдельный каталог/CLI-gate — вне текущего PR.
+- Тестовые выпуски (`is_test: true` и/или все `event_id` с префиксом
+  `TEST-EV-`) **по умолчанию запрещены** в `processed/events/`.
+  Нужен флаг CLI `--test-events` → отдельные пути:
+  `processed/events_test/`, `events_history_test/`, `rejected_test/`,
+  `inbox_archive_test/`, `batches_test/`, `inbox/events_test/`.
+- Смешанный выпуск test/prod → `EVENT_TEST_PROD_MIXED` (exit 2) до записи.
+- Без `--test-events` → `EVENT_TEST_MODE_REQUIRED` (exit 2).
+- Боевые схемы радара не меняются ради тестовых данных.
 - Упрощённый batch: `tests/fixtures/radar_batch_sample.json`

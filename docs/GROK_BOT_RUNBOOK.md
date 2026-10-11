@@ -83,11 +83,18 @@ python -m moex_portfolio validate-data --max-staleness-days 5
 # мост радар → CLI (оригинал /workspace/invest/... не удаляется):
 python -m moex_portfolio ingest-events \
   --source /workspace/invest/news/events_latest.json
+# тестовые выпуски (is_test / TEST-EV-*): обязателен --test-events
+# python -m moex_portfolio ingest-events --source … --test-events
 # либо положить копию вручную в data/inbox/events/ и вызвать без --source
 python -m moex_portfolio optimize --allow-optimize --mode universe --max-weight 0.5
 python -m moex_portfolio compare --min-drift 0.05
 python -m moex_portfolio report --run-id <run_id>
+# пакет для one-shot Аналитика (без правки skills):
+# python -m moex_portfolio build-analyst-bundle --test-events --compare-json … 
 ```
+
+Сквозной синтетический сценарий: `docs/E2E_ANALYST_SCENARIO.md`,
+`python scripts/run_e2e_analyst_scenario.py`.
 
 Коды выхода: `0` ok, `1` непредвиденная ошибка / missing run, `2` бизнес/валидация
 (включая **частичный** отказ ingest: `partial=true`; JSON тогда в **stderr**),

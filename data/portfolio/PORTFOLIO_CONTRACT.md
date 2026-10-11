@@ -42,8 +42,20 @@ weight/shares → отказ всего файла (`PORTFOLIO_ROW_ERRORS` /
   При `1e-6 < |Σ−1| ≤ 0.005` адаптер **явно** нормализует веса к 1.0 и пишет в
   метаданные `adapter.weight_normalized=true`, `adapter.weight_sum_before`.
   Вне ±0.005 → reject (`PORTFOLIO_WEIGHT_SUM`), без тихой подгонки.
+- Multi-account: явные portfolio-level `weight` **имеют приоритет** над
+  `market_value`. MV не пересчитывает веса и не обходит проверку суммы CSV.
+  MV как база весов — только если `weight` отсутствует у всех строк.
 - `cash` — абсолютная сумма (RUB), **не** входит в сумму весов.
 - Shares-only без weight → `HOLDINGS_SHARES_WITHOUT_WEIGHTS`.
+
+### Legacy holdings
+
+- Поле `weight_sum_policy`: `canonical` (по умолчанию) | `legacy_analyst`.
+- Только при **явном** `legacy_analyst` load допускает Σ ±0.005 с нормализацией
+  **в памяти** (`weight_normalized_on_load`, `weight_sum_before`); файл не
+  перезаписывается. Отклонение суммы само по себе не делает файл legacy.
+- `save_holdings` всегда пишет канон (±1e-6) и снимает legacy-маркер.
+- Target / результат оптимизатора не нормализуются молча.
 
 ## 4. Missing vs empty
 

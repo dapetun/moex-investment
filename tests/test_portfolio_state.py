@@ -1,5 +1,7 @@
 """Тесты модели фактических позиций портфеля (holdings)."""
 
+import json
+
 import pytest
 
 from moex_portfolio.portfolio_state import (
@@ -168,3 +170,62 @@ def test_weights_from_shares_without_prices_raises():
     }
     with pytest.raises(HoldingsValidationError, match="HOLDINGS_SHARES_WITHOUT_WEIGHTS"):
         weights_from_holdings(data)
+
+
+def test_legacy_policy_normalizes_on_load_without_rewrite(tmp_path, monkeypatch):
+    monkeypatch.setattr("moex_portfolio.portfolio_state.HOLDINGS_DIR", tmp_path)
+    path = tmp_path / "holdings.json"
+    raw = {
+        "as_of": "2026-10-10",
+        "cash": 0.0,
+        "weight_sum_policy": "legacy_analyst",
+        "positions": [
+            {"ticker": "A", "weight": 0.40},
+            {"ticker": "B", "weight": 0.35},
+            {"ticker": "C", "weight": 0.248},
+        ],
+    }
+    path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+    before = path.read_text(encoding="utf-8")
+    loaded = load_holdings()
+    assert loaded["weight_normalized_on_load"] is True
+    assert abs(loaded["weight_sum_before"] - 0.998) < 1e-9
+    assert abs(sum(p["weight"] for p in loaded["positions"]) - 1.0) < 1e-6
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_non_legacy_wrong_sum_still_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr("moex_portfolio.portfolio_state.HOLDINGS_DIR", tmp_path)
+    path = tmp_path / "holdings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "as_of": None,
+                "cash": 0.0,
+                "positions": [
+                    {"ticker": "A", "weight": 0.40},
+                    {"ticker": "B", "weight": 0.35},
+                    {"ticker": "C", "weight": 0.248},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(HoldingsValidationError, match="HOLDINGS_WEIGHT_SUM"):
+        load_holdings()
+
+
+def test_save_holdings_does_not_keep_legacy_policy(tmp_path, monkeypatch):
+    monkeypatch.setattr("moex_portfolio.portfolio_state.HOLDINGS_DIR", tmp_path)
+    data = {
+        "as_of": None,
+        "cash": 0.0,
+        "weight_sum_policy": "legacy_analyst",
+        "positions": [
+            {"ticker": "A", "weight": 0.5},
+            {"ticker": "B", "weight": 0.5},
+        ],
+    }
+    save_holdings(data)
+    on_disk = json.loads((tmp_path / "holdings.json").read_text(encoding="utf-8"))
+    assert "weight_sum_policy" not in on_disk
