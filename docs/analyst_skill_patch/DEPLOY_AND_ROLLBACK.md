@@ -33,4 +33,6 @@
 
 ## Rollback
 
-См. шаг 10 в `SAFE_DEPLOY.md` (восстановление из `/tmp/analyst-cli-backup-*`).
+См. шаг 10 в `SAFE_DEPLOY.md`: **10a** — восстановление OPT/POS/QC/profile/SPEC
+из бэкапа; **10b** — снятие skill штатным delete по зарегистрированному
+`skill_id` (не `rm -rf`). Контуры независимы.
