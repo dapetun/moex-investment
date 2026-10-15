@@ -221,29 +221,41 @@ if [[ -s "$PARTIAL/CLI_SKILL_ID.txt" ]]; then
 fi
 echo "PASS partial-create incomplete ID detected"
 
-# --- BL10: unset WF must fail require_deploy_env ---
-set +e
-bl10_out=$(
-  BK="$DEPLOY_ROOT"
-  WF=""
-  AGENT_REAL="$N_AGENT"
-  SKILL_ROOT_LOGICAL="$N_WF"
-  AGENT_DATA_LOGICAL="$N_AGENT"
-  (
+# --- BL10: isolated shell, empty/missing WF — тот же inline, что в SAFE_DEPLOY ---
+run_bl10_inline() {
+  # симуляция: отдельный bash -c без функций из других блоков
+  env -i PATH="$PATH" HOME="$HOME" bash --noprofile --norc -c '
     set -euo pipefail
-    : "${BK:?BK required}"
-    : "${WF:?WF required}"
-    : "${AGENT_REAL:?AGENT_REAL required}"
+    BK="'"$1"'"
+    WF="'"$2"'"
+    AGENT_REAL="'"$3"'"
+    SKILL_ROOT_LOGICAL="'"$4"'"
+    AGENT_DATA_LOGICAL="'"$5"'"
+    : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" "${AGENT_DATA_LOGICAL:?}"
+    case "$WF" in ""|"/"|".") echo "WF unsafe: <$WF>"; exit 1;; esac
     test -d "$BK" && test -d "$WF" && test -d "$AGENT_REAL" \
       || { echo "BK/WF/AGENT_REAL must be directories"; exit 1; }
-  ) 2>&1
-)
-bl10_rc=$?
+    echo "bl10 inline ok"
+  '
+}
+set +e
+run_bl10_inline "$DEPLOY_ROOT" "" "$N_AGENT" "$N_WF" "$N_AGENT" >/dev/null 2>&1
+bl10_empty=$?
+run_bl10_inline "$DEPLOY_ROOT" "/" "$N_AGENT" "$N_WF" "$N_AGENT" >/dev/null 2>&1
+bl10_slash=$?
+# без WF вовсе
+env -i PATH="$PATH" bash --noprofile --norc -c '
+  set -euo pipefail
+  BK="'"$DEPLOY_ROOT"'"
+  AGENT_REAL="'"$N_AGENT"'"
+  : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}"
+' >/dev/null 2>&1
+bl10_unset=$?
 set -e
-if [[ $bl10_rc -eq 0 ]]; then
-  echo "FAIL BL10: empty WF returned 0"; exit 1
+if [[ $bl10_empty -eq 0 || $bl10_slash -eq 0 || $bl10_unset -eq 0 ]]; then
+  echo "FAIL BL10: empty=$bl10_empty slash=$bl10_slash unset=$bl10_unset"; exit 1
 fi
-echo "PASS BL10 unset WF rejected (rc=$bl10_rc)"
+echo "PASS BL10 isolated shell rejects empty/slash/unset WF (rc $bl10_empty/$bl10_slash/$bl10_unset)"
 
 # --- N34: missing path nonzero ---
 set +e
