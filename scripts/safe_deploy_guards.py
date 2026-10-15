@@ -79,6 +79,11 @@ def validate_deploy_env(env: dict[str, str] | None = None, *, need_repo: bool = 
         raise SystemExit(
             f"AGENT_REAL outside AGENT_DATA tree: {agent_real} not under {agent_data_real}"
         )
+    # N45: AGENT_REAL — каталог агента (…/agents/<id>), не сам корень agent-data
+    if agent_real == agent_data_real:
+        raise SystemExit("AGENT_REAL must be under agents/, not AGENT_DATA root")
+    if "agents" not in agent_real.parts:
+        raise SystemExit(f"AGENT_REAL missing agents/ segment: {agent_real}")
     if not _under(skill_real, agent_data_real):
         raise SystemExit(
             f"SKILL_ROOT_REAL outside AGENT_DATA: {skill_real} not under {agent_data_real}"

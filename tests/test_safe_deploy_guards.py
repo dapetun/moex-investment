@@ -292,9 +292,82 @@ def test_n39_extract_safe_deploy_steps() -> None:
     md = ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md"
     blocks = g.extract_bash_steps(md.read_text(encoding="utf-8"))
     assert len(blocks) >= 6
-    # критические шаги должны содержать validate-env (не только helper-тесты)
     with_validate = [b for b in blocks if "validate-env" in b]
     assert len(with_validate) >= 5, f"expected validate-env in steps, got {len(with_validate)}"
-    # и явный запрет AGENT_REAL=/
-    with_agent_case = [b for b in blocks if 'AGENT_REAL' in b and '"/"' in b]
+    with_agent_case = [b for b in blocks if "AGENT_REAL" in b and '"/"' in b]
     assert with_agent_case, "SAFE_DEPLOY steps must case-reject AGENT_REAL=/"
+    # BL11: каждый шаг с validate-env обязан export'ить или передавать BK= в env
+    for b in with_validate:
+        assert "export BK" in b or 'BK="$BK"' in b, "BL11: validate-env without env pass-through"
+        assert "|| exit" in b
+
+
+def test_n39_mutation_missing_validate_env_detected() -> None:
+    """Мутация текста SD (убрать validate-env) должна ломаться структурной проверкой."""
+    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
+        encoding="utf-8"
+    )
+    mutated = md.replace("validate-env", "VALIDATE_ENV_REMOVED")
+    blocks = g.extract_bash_steps(mutated)
+    with_validate = [b for b in blocks if "validate-env" in b]
+    assert with_validate == [], "mutation must zero out validate-env matches"
+
+
+def test_n39_execute_step2_preamble_from_sd(
+    symlink_box: dict[str, Path], tmp_path: Path
+) -> None:
+    """Прогнать preamble шага 2 из реального SAFE_DEPLOY.md (не копию)."""
+    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
+        encoding="utf-8"
+    )
+    step2 = next(b for b in g.extract_bash_steps(md) if "BEFORE_MARKER" in b)
+    # только guard до touch
+    preamble = step2.split("touch")[0]
+    assert "validate-env" in preamble
+    env = _env_for_validate(symlink_box, tmp_path)
+    # успех
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "validate-env", "--need-repo"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **env},
+    )
+    assert r.returncode == 0, r.stderr + r.stdout
+    # AGENT_REAL=/ как в SD case + validate
+    bad = dict(env)
+    bad["AGENT_REAL"] = "/"
+    r2 = subprocess.run(
+        [sys.executable, str(SCRIPT), "validate-env", "--need-repo"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **bad},
+    )
+    assert r2.returncode != 0
+
+
+def test_n45_agent_real_must_be_under_agents(
+    symlink_box: dict[str, Path], tmp_path: Path
+) -> None:
+    env = _env_for_validate(symlink_box, tmp_path)
+    env["AGENT_REAL"] = str(symlink_box["sand"].resolve())  # корень agent-data real
+    with pytest.raises(SystemExit, match="agents/|AGENT_DATA root"):
+        g.validate_deploy_env(env, need_repo=True)
+
+
+def test_bl11_validate_env_missing_without_export() -> None:
+    """Без переменных в environ validate-env обязан упасть (BL11)."""
+    clean = {k: v for k, v in os.environ.items() if k not in {
+        "BK", "WF", "AGENT_REAL", "DEPLOY_ROOT", "SKILL_ROOT_REAL",
+        "SKILL_ROOT_LOGICAL", "AGENT_DATA_LOGICAL", "REPO_ROOT",
+    }}
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "validate-env", "--need-repo"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=clean,
+    )
+    assert r.returncode != 0
+    assert "missing" in (r.stderr + r.stdout).lower() or r.returncode != 0

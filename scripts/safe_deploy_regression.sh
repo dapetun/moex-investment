@@ -325,23 +325,85 @@ mkdir -p "$AGENTS_DIR"
 N_AGENTS="$(native "$AGENTS_DIR")"
 N_SKILL_REAL="$(native "$SAND/workflows")"
 N_DEPLOY="$(native "$DEPLOY_ROOT")"
-export BK="$N_DEPLOY" DEPLOY_ROOT="$N_DEPLOY" WF="$N_SKILL_REAL" \
-  SKILL_ROOT_REAL="$N_SKILL_REAL" SKILL_ROOT_LOGICAL="$N_WF" \
-  AGENT_DATA_LOGICAL="$N_AGENT" AGENT_REAL="$N_AGENTS" REPO_ROOT="$(native "$ROOT")"
-$PY "$N_GUARDS" validate-env --need-repo >/dev/null
-echo "PASS validate-env ok on mock"
+N_REPO_ROOT="$(native "$ROOT")"
+# BL11: передаём переменные в environ явно (как в SAFE_DEPLOY после export)
+run_validate() {
+  BK="$N_DEPLOY" DEPLOY_ROOT="$N_DEPLOY" WF="$N_SKILL_REAL" \
+    SKILL_ROOT_REAL="$N_SKILL_REAL" SKILL_ROOT_LOGICAL="$N_WF" \
+    AGENT_DATA_LOGICAL="$N_AGENT" AGENT_REAL="$1" REPO_ROOT="$N_REPO_ROOT" \
+    $PY "$N_GUARDS" validate-env --need-repo
+}
+run_validate "$N_AGENTS" >/dev/null
+echo "PASS validate-env ok on mock (BL11 env pass-through)"
+
+# без env — должен упасть
+set +e
+env -i PATH="$PATH" $PY "$N_GUARDS" validate-env --need-repo >/dev/null 2>&1
+bl11_rc=$?
+set -e
+if [[ $bl11_rc -eq 0 ]]; then echo "FAIL BL11: validate-env ok without env"; exit 1; fi
+echo "PASS BL11 validate-env fails without env (rc=$bl11_rc)"
 
 mkdir -p "$TMP/other-wf"
 set +e
-AGENT_REAL="/" $PY "$N_GUARDS" validate-env --need-repo >/dev/null 2>&1
+AGENT_REAL="/" BK="$N_DEPLOY" DEPLOY_ROOT="$N_DEPLOY" WF="$N_SKILL_REAL" \
+  SKILL_ROOT_REAL="$N_SKILL_REAL" SKILL_ROOT_LOGICAL="$N_WF" \
+  AGENT_DATA_LOGICAL="$N_AGENT" REPO_ROOT="$N_REPO_ROOT" \
+  $PY "$N_GUARDS" validate-env --need-repo >/dev/null 2>&1
 n43_rc=$?
-WF="$(native "$TMP/other-wf")" $PY "$N_GUARDS" validate-env --need-repo >/dev/null 2>&1
+BK="$N_DEPLOY" DEPLOY_ROOT="$N_DEPLOY" WF="$(native "$TMP/other-wf")" \
+  SKILL_ROOT_REAL="$N_SKILL_REAL" SKILL_ROOT_LOGICAL="$N_WF" \
+  AGENT_DATA_LOGICAL="$N_AGENT" AGENT_REAL="$N_AGENTS" REPO_ROOT="$N_REPO_ROOT" \
+  $PY "$N_GUARDS" validate-env --need-repo >/dev/null 2>&1
 n44_rc=$?
+# N45: AGENT_REAL = корень sand-data
+BK="$N_DEPLOY" DEPLOY_ROOT="$N_DEPLOY" WF="$N_SKILL_REAL" \
+  SKILL_ROOT_REAL="$N_SKILL_REAL" SKILL_ROOT_LOGICAL="$N_WF" \
+  AGENT_DATA_LOGICAL="$N_AGENT" AGENT_REAL="$(native "$SAND")" REPO_ROOT="$N_REPO_ROOT" \
+  $PY "$N_GUARDS" validate-env --need-repo >/dev/null 2>&1
+n45_rc=$?
 set -e
-export WF="$N_SKILL_REAL" AGENT_REAL="$N_AGENTS"
 if [[ $n43_rc -eq 0 ]]; then echo "FAIL N43 AGENT_REAL=/ accepted"; exit 1; fi
 if [[ $n44_rc -eq 0 ]]; then echo "FAIL N44 WF mismatch accepted"; exit 1; fi
-echo "PASS N43/N44 validate-env rejects (rc $n43_rc/$n44_rc)"
+if [[ $n45_rc -eq 0 ]]; then echo "FAIL N45 AGENT_REAL=sand root accepted"; exit 1; fi
+echo "PASS N43/N44/N45 validate-env rejects (rc $n43_rc/$n44_rc/$n45_rc)"
+
+# N39: извлечь шаг 2 из SD и выполнить preamble (case+validate) в env -i
+STEP2_FILE="$TMP/step2_preamble.sh"
+PY_FOR_SD="$PY"
+# Git Bash: Windows-пути → forward slash для вставки в sh
+case "$(uname -s 2>/dev/null || echo unknown)" in
+  MINGW*|MSYS*|CYGWIN*) PY_FOR_SD=$(cygpath -u "$PY" 2>/dev/null || echo "$PY");;
+esac
+export ROOT PY_FOR_SD STEP2_FILE
+$PY - <<'PY'
+from pathlib import Path
+import os, sys
+root = Path(os.environ["ROOT"])
+sys.path.insert(0, str(root / "scripts"))
+import safe_deploy_guards as g
+md = (root / "docs/analyst_skill_patch/SAFE_DEPLOY.md").read_text(encoding="utf-8")
+step2 = next(b for b in g.extract_bash_steps(md) if "BEFORE_MARKER" in b)
+pre = step2.split("touch")[0]
+pre = pre.replace("python3 ", os.environ["PY_FOR_SD"] + " ")
+Path(os.environ["STEP2_FILE"]).write_text(pre, encoding="utf-8")
+print("wrote", len(pre))
+PY
+set +e
+env -i PATH="$PATH" BK="$N_DEPLOY" DEPLOY_ROOT="$N_DEPLOY" WF="$N_SKILL_REAL" \
+  AGENT_REAL="$N_AGENTS" SKILL_ROOT_LOGICAL="$N_WF" SKILL_ROOT_REAL="$N_SKILL_REAL" \
+  AGENT_DATA_LOGICAL="$N_AGENT" REPO_ROOT="$N_REPO_ROOT" \
+  bash --noprofile --norc "$STEP2_FILE" >/dev/null 2>&1
+n39_ok=$?
+env -i PATH="$PATH" BK="$N_DEPLOY" DEPLOY_ROOT="$N_DEPLOY" WF="$N_SKILL_REAL" \
+  AGENT_REAL="/" SKILL_ROOT_LOGICAL="$N_WF" SKILL_ROOT_REAL="$N_SKILL_REAL" \
+  AGENT_DATA_LOGICAL="$N_AGENT" REPO_ROOT="$N_REPO_ROOT" \
+  bash --noprofile --norc "$STEP2_FILE" >/dev/null 2>&1
+n39_bad=$?
+set -e
+if [[ $n39_ok -ne 0 ]]; then echo "FAIL N39: real step2 preamble failed rc=$n39_ok"; exit 1; fi
+if [[ $n39_bad -eq 0 ]]; then echo "FAIL N39: step2 preamble accepted AGENT_REAL=/"; exit 1; fi
+echo "PASS N39 executed SAFE_DEPLOY step2 preamble (ok=$n39_ok bad=$n39_bad)"
 
 # --- N39: run AGENT_REAL=/ case from SAFE_DEPLOY step-2 preface in env -i ---
 set +e

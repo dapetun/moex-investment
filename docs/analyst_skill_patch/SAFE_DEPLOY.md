@@ -49,8 +49,14 @@ AGENT="$AGENT_DATA_LOGICAL/agents/5bda2f3d-a61a-48d6-8663-2441802d68de"
 WF="$SKILL_ROOT_REAL"
 AGENT_REAL=$(realpath -e "$AGENT")
 REPO_ROOT="<клон moex-investment @ SHA>"
-# N43/N44: пустые/корневые пути + WF==SKILL_ROOT_REAL + BK==DEPLOY_ROOT
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+# BL11: export обязателен — иначе python validate-env не видит shell-переменные
+export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
+  AGENT_DATA_LOGICAL AGENT_DATA_REAL REPO_ROOT DEPLOY_OP_ID
+# N43/N44/N45: пустые/корневые пути + WF==SKILL_ROOT_REAL + BK==DEPLOY_ROOT + agents/
+BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
+  SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
+  AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
+  python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 ```
 
 **BL10 + N43/N44 (обязательно):** каждый шаг ниже начинается с **inline**
@@ -93,7 +99,12 @@ case "$WF" in ""|"/"|"."|"..") echo "WF unsafe: <$WF>"; exit 1;; esac
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 case "$BK" in ""|"/"|"."|"..") echo "BK unsafe"; exit 1;; esac
 case "$DEPLOY_ROOT" in ""|"/"|"."|"..") echo "DEPLOY_ROOT unsafe"; exit 1;; esac
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
+  AGENT_DATA_LOGICAL REPO_ROOT
+BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
+  SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
+  AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
+  python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 touch "$BK/BEFORE_MARKER"
 cp -a "$AGENT_REAL/profile.json" "$BK/"
 cp -a "$WF/skill-1791618014068/SKILL.md" "$BK/OPT_SKILL.md"
@@ -117,7 +128,12 @@ set -euo pipefail
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe: <$WF>"; exit 1;; esac
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 case "$BK" in ""|"/"|"."|"..") echo "BK unsafe"; exit 1;; esac
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
+  AGENT_DATA_LOGICAL REPO_ROOT
+BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
+  SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
+  AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
+  python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 set -o noclobber
 (
   find "$WF" "$AGENT_REAL" -type f \
@@ -163,7 +179,12 @@ set -euo pipefail
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
+  AGENT_DATA_LOGICAL REPO_ROOT
+BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
+  SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
+  AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
+  python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 CLI_ID=$(cat "$BK/CLI_SKILL_ID.txt")
 CLI_PATH_RAW=$(cat "$BK/CLI_SKILL_PATH.txt")
 test -n "$CLI_ID" && test -n "$CLI_PATH_RAW" || { echo "empty id/path"; exit 1; }
@@ -214,7 +235,12 @@ set -euo pipefail
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" \
   "${REPO_ROOT:?}" "${CLI_PATH:?}"
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
+  AGENT_DATA_LOGICAL REPO_ROOT CLI_PATH
+BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
+  SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
+  AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
+  python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 test -d "$CLI_PATH" || exit 1
 REPO_SKILL="$REPO_ROOT/docs/analyst_skill_patch/cli-analyst-bundle/SKILL.md"
 LIVE_SKILL="$CLI_PATH/SKILL.md"
@@ -243,7 +269,12 @@ set -euo pipefail
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
+  AGENT_DATA_LOGICAL REPO_ROOT
+BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
+  SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
+  AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
+  python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 test -f "$BK/MANIFEST_BEFORE.txt" || { echo "MANIFEST_BEFORE missing"; exit 1; }
 CLI_PATH=$(cat "$BK/CLI_SKILL_PATH_REAL.txt")
 test -n "$CLI_PATH" || exit 1
@@ -319,7 +350,12 @@ set -euo pipefail
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 case "$BK" in ""|"/"|"."|"..") echo "BK unsafe"; exit 1;; esac
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
+  AGENT_DATA_LOGICAL REPO_ROOT
+BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
+  SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
+  AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
+  python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 cp -a "$BK/profile.json" "$AGENT_REAL/profile.json"
 cp -a "$BK/OPT_SKILL.md" "$WF/skill-1791618014068/SKILL.md"
 cp -a "$BK/POS_SKILL.md" "$WF/skill-1791618006478/SKILL.md"
@@ -338,7 +374,12 @@ set -euo pipefail
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 2
+export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
+  AGENT_DATA_LOGICAL REPO_ROOT
+BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
+  SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
+  AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
+  python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 2
 if [ ! -f "$BK/CLI_SKILL_ID.txt" ] && [ ! -f "$BK/CLI_SKILL_PATH.txt" ]; then
   echo "no create record — skip skill delete"; exit 0
 fi
