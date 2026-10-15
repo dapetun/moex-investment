@@ -405,6 +405,26 @@ if [[ $n39_ok -ne 0 ]]; then echo "FAIL N39: real step2 preamble failed rc=$n39_
 if [[ $n39_bad -eq 0 ]]; then echo "FAIL N39: step2 preamble accepted AGENT_REAL=/"; exit 1; fi
 echo "PASS N39 executed SAFE_DEPLOY step2 preamble (ok=$n39_ok bad=$n39_bad)"
 
+# N39 integrity + мутации M1–M4
+$PY - <<'PY'
+import os, re, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(os.environ["ROOT"]) / "scripts"))
+import safe_deploy_guards as g
+md = (Path(os.environ["ROOT"]) / "docs/analyst_skill_patch/SAFE_DEPLOY.md").read_text(encoding="utf-8")
+g.assert_safe_deploy_integrity(md)
+blocks = g.extract_bash_steps(md)
+step4b = next(b for b in blocks if "4b ok" in b)
+bad = re.sub(r"(path-check[\s\S]{0,200}?)\|\|\s*exit\s+1", r"\1", step4b, count=1)
+try:
+    g.assert_safe_deploy_integrity(md.replace(step4b, bad))
+except SystemExit as e:
+    assert "path-check missing" in str(e), e
+else:
+    raise SystemExit("M3 mutation not detected")
+print("PASS N39 integrity + M3 mutation detected")
+PY
+
 # --- N39: run AGENT_REAL=/ case from SAFE_DEPLOY step-2 preface in env -i ---
 set +e
 env -i PATH="$PATH" BK="$N_DEPLOY" WF="$N_SKILL_REAL" AGENT_REAL="/" \

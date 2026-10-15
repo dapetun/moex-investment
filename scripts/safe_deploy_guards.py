@@ -79,11 +79,23 @@ def validate_deploy_env(env: dict[str, str] | None = None, *, need_repo: bool = 
         raise SystemExit(
             f"AGENT_REAL outside AGENT_DATA tree: {agent_real} not under {agent_data_real}"
         )
-    # N45: AGENT_REAL — каталог агента (…/agents/<id>), не сам корень agent-data
+    # N45: AGENT_REAL = …/agents/<точный id Аналитика>, не корень и не …/agents
+    _EXPECTED_AGENT_ID = "5bda2f3d-a61a-48d6-8663-2441802d68de"
     if agent_real == agent_data_real:
         raise SystemExit("AGENT_REAL must be under agents/, not AGENT_DATA root")
-    if "agents" not in agent_real.parts:
+    parts = list(agent_real.parts)
+    if "agents" not in parts:
         raise SystemExit(f"AGENT_REAL missing agents/ segment: {agent_real}")
+    idx = parts.index("agents")
+    if idx >= len(parts) - 1:
+        raise SystemExit("AGENT_REAL must be agents/<agent_id>, not agents/")
+    agent_id = parts[idx + 1]
+    if agent_id != _EXPECTED_AGENT_ID:
+        raise SystemExit(
+            f"AGENT_REAL unexpected agent id: {agent_id!r} (want {_EXPECTED_AGENT_ID})"
+        )
+    if idx + 1 != len(parts) - 1:
+        raise SystemExit(f"AGENT_REAL must end at agent id dir: {agent_real}")
     if not _under(skill_real, agent_data_real):
         raise SystemExit(
             f"SKILL_ROOT_REAL outside AGENT_DATA: {skill_real} not under {agent_data_real}"
@@ -244,6 +256,58 @@ def extract_bash_steps(md_text: str) -> list[str]:
             continue
         blocks.append(part[:end].strip("\n"))
     return blocks
+
+
+def assert_safe_deploy_integrity(md_text: str) -> None:
+    """Структурная целостность SAFE_DEPLOY: ловит мутации M1–M4 (N39)."""
+    blocks = extract_bash_steps(md_text)
+    if len(blocks) < 6:
+        raise SystemExit(f"too few bash blocks: {len(blocks)}")
+
+    def find_one(pred, label: str) -> str:
+        for b in blocks:
+            if pred(b):
+                return b
+        raise SystemExit(f"missing bash block: {label}")
+
+    step2 = find_one(lambda b: "BEFORE_MARKER" in b, "step2")
+    step3 = find_one(lambda b: "MANIFEST_BEFORE" in b and "noclobber" in b, "step3")
+    step4b = find_one(lambda b: "4b ok" in b, "step4b")
+    step6 = find_one(lambda b: "allowed_exact" in b and "MANIFEST_AFTER" in b, "step6")
+    step10a = find_one(lambda b: 'cp -a "$BK/profile.json"' in b, "step10a")
+    step10b = find_one(
+        lambda b: "path existed before deploy — refuse delete" in b
+        or "path existed before deploy - refuse delete" in b
+        or ("refuse delete" in b and "path-check" in b),
+        "step10b",
+    )
+
+    for label, block in (
+        ("step2", step2),
+        ("step3", step3),
+        ("step4b", step4b),
+        ("step6", step6),
+        ("step10a", step10a),
+        ("step10b", step10b),
+    ):
+        if "validate-env" not in block:
+            raise SystemExit(f"{label} missing validate-env")
+        if "export BK" not in block and 'BK="$BK"' not in block:
+            raise SystemExit(f"{label} missing BL11 env pass-through")
+        if 'case "$AGENT_REAL"' not in block:
+            raise SystemExit(f"{label} missing case AGENT_REAL")
+
+    if not re.search(r"path-check[\s\S]{0,200}\|\|\s*exit\s+1", step4b):
+        raise SystemExit("step4b path-check missing || exit 1 (BL8)")
+    for needle in (
+        "profile.json",
+        "skill-1791618014068",
+        "skill-1791618006478",
+        "skill-1791617999761",
+        "analysis_spec.md",
+    ):
+        if needle not in step6:
+            raise SystemExit(f"step6 allowlist missing {needle}")
 
 
 def main(argv: list[str]) -> int:

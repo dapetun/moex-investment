@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -302,15 +303,59 @@ def test_n39_extract_safe_deploy_steps() -> None:
         assert "|| exit" in b
 
 
-def test_n39_mutation_missing_validate_env_detected() -> None:
-    """Мутация текста SD (убрать validate-env) должна ломаться структурной проверкой."""
+def test_n39_integrity_ok_on_real_sd() -> None:
     md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
         encoding="utf-8"
     )
-    mutated = md.replace("validate-env", "VALIDATE_ENV_REMOVED")
-    blocks = g.extract_bash_steps(mutated)
-    with_validate = [b for b in blocks if "validate-env" in b]
-    assert with_validate == [], "mutation must zero out validate-env matches"
+    g.assert_safe_deploy_integrity(md)
+
+
+def test_n39_mutations_m1_m4_detected() -> None:
+    """Мутации M1–M4 из review Песочницы должны валить integrity (N39)."""
+    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
+        encoding="utf-8"
+    )
+    g.assert_safe_deploy_integrity(md)
+
+    # M1: вырезать validate-env и case AGENT_REAL только из блока 10a
+    blocks = g.extract_bash_steps(md)
+    step10a = next(b for b in blocks if 'cp -a "$BK/profile.json"' in b)
+    bad10a = step10a.replace("validate-env", "GONE").replace(
+        'case "$AGENT_REAL"', 'case "$NOT_AGENT"'
+    )
+    mut1 = md.replace(step10a, bad10a)
+    with pytest.raises(SystemExit, match="step10a"):
+        g.assert_safe_deploy_integrity(mut1)
+
+    # M2: вырезать guards из шага 3
+    step3 = next(b for b in blocks if "MANIFEST_BEFORE" in b and "noclobber" in b)
+    bad3 = "\n".join(
+        ln
+        for ln in step3.splitlines()
+        if "validate-env" not in ln and "export BK" not in ln and "case" not in ln
+    )
+    mut2 = md.replace(step3, bad3)
+    with pytest.raises(SystemExit, match="step3"):
+        g.assert_safe_deploy_integrity(mut2)
+
+    # M3: убрать || exit 1 после path-check в 4b
+    step4b = next(b for b in blocks if "4b ok" in b)
+    bad4b = re.sub(
+        r"(path-check[\s\S]{0,200}?)\|\|\s*exit\s+1",
+        r"\1",
+        step4b,
+        count=1,
+    )
+    mut3 = md.replace(step4b, bad4b)
+    with pytest.raises(SystemExit, match="path-check missing"):
+        g.assert_safe_deploy_integrity(mut3)
+
+    # M4: вырезать skill из allowlist шага 6
+    step6 = next(b for b in blocks if "allowed_exact" in b and "MANIFEST_AFTER" in b)
+    bad6 = step6.replace("skill-1791618014068", "skill-REMOVED")
+    mut4 = md.replace(step6, bad6)
+    with pytest.raises(SystemExit, match="allowlist missing"):
+        g.assert_safe_deploy_integrity(mut4)
 
 
 def test_n39_execute_step2_preamble_from_sd(
@@ -353,6 +398,16 @@ def test_n45_agent_real_must_be_under_agents(
     env = _env_for_validate(symlink_box, tmp_path)
     env["AGENT_REAL"] = str(symlink_box["sand"].resolve())  # корень agent-data real
     with pytest.raises(SystemExit, match="agents/|AGENT_DATA root"):
+        g.validate_deploy_env(env, need_repo=True)
+    agents_only = symlink_box["sand"] / "agents"
+    agents_only.mkdir(exist_ok=True)
+    env["AGENT_REAL"] = str(agents_only.resolve())
+    with pytest.raises(SystemExit, match="agents/<agent_id>|not agents/"):
+        g.validate_deploy_env(env, need_repo=True)
+    wrong = symlink_box["sand"] / "agents" / "00000000-0000-0000-0000-000000000000"
+    wrong.mkdir(exist_ok=True)
+    env["AGENT_REAL"] = str(wrong.resolve())
+    with pytest.raises(SystemExit, match="unexpected agent id"):
         g.validate_deploy_env(env, need_repo=True)
 
 
