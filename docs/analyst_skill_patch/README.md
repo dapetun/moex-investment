@@ -6,6 +6,8 @@
 | `PROFILE_SNIPPET.md` | краткий абзац (детали в live_patches) |
 | `live_patches/` | дословные патчи OPT/POS/profile/SPEC + AUDIT_BASELINE (V8) |
 | `SAFE_DEPLOY.md` | 10 шагов deploy/rollback |
+| `ops/DEPLOY_OPS.md` | статусы handoff / anti-parallel deploy_op_id |
+| `ops/DECISION_PERMISSION_A_*.md` | письменный approve владельца |
 | `permissions/PERMISSION_A.md` | wiring на синтетике |
 | `permissions/PERMISSION_B.md` | реальный портфель (отдельно) |
 | `DEPLOY_AND_ROLLBACK.md` | краткий указатель |

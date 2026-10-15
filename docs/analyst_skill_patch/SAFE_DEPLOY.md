@@ -3,6 +3,11 @@
 Пакет: `cli-analyst-bundle` + `live_patches/*` @ репо SHA, зафиксированный в задании.  
 **В этой подготовке deploy не выполняется.**
 
+Учёт операций и анти-параллель: `ops/DEPLOY_OPS.md`  
+(уникальный `deploy_op_id`, статусы submitted→…→verified/failed/rolled_back/cancelled;
+не слать второй apply, пока предыдущий op не cancelled/failed/rolled_back/verified).
+Решение владельца для SHA: `ops/DECISION_PERMISSION_A_*.md`.
+
 ## Модель платформы (исходные данные владельца)
 
 - Новый skill создаётся и удаляется **штатным инструментом платформы**
