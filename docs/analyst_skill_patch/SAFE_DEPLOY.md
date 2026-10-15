@@ -1,15 +1,15 @@
-# Безопасный deploy Permission A (не выполнять без подтверждения)
+# Безопасный deploy Permission A
 
-Пакет: `cli-analyst-bundle` + `live_patches/*` @ репо SHA, зафиксированный в задании.  
-**В этой подготовке deploy не выполняется.**
+Пакет: `cli-analyst-bundle` + `live_patches/*` @ репо SHA, зафиксированный в задании.
 
 Учёт операций и анти-параллель: `ops/DEPLOY_OPS.md`  
 (уникальный `deploy_op_id`, статусы submitted→…→verified/failed/rolled_back/cancelled).
-Решение владельца: `ops/DECISION_PERMISSION_A_*.md`.
+Решение владельца: `ops/DECISION_PERMISSION_A_*.md` + явная санкция на apply в задании.
 
-Хелперы (обязательны на шагах 4b/4c/6):  
-`scripts/safe_deploy_guards.py` — path-check / skill-compare / canon.  
-Регрессия: `scripts/safe_deploy_regression.sh`, `tests/test_safe_deploy_guards.py`.
+Хелперы (обязательны на шагах 2+/4b/4c/6/10):  
+`scripts/safe_deploy_guards.py` — path-check / skill-compare / canon / **validate-env**.  
+Регрессия: `scripts/safe_deploy_regression.sh`, `tests/test_safe_deploy_guards.py`
+(в т.ч. прогон inline-фрагментов из **этого** файла — N39).
 
 ## Модель платформы
 
@@ -25,8 +25,9 @@
 
 ```bash
 # Задать один раз в начале deploy (после STAMP / deploy_op_id):
+set -euo pipefail
 STAMP=$(date +%Y%m%dT%H%M%S)
-DEPLOY_OP_ID="${DEPLOY_OP_ID:-pa-$STAMP}"
+DEPLOY_OP_ID="${DEPLOY_OP_ID:?set deploy_op_id explicitly}"
 DEPLOY_ROOT="/workspace/handoffs/backups/analyst-cli-${STAMP}"
 mkdir -p "$DEPLOY_ROOT"
 BK="$DEPLOY_ROOT"   # единственный корень: backup, MANIFEST_*, CLI_SKILL_*.txt
@@ -35,7 +36,8 @@ BK="$DEPLOY_ROOT"   # единственный корень: backup, MANIFEST_*,
 
 Все последующие шаги используют **только** `$BK` (= `$DEPLOY_ROOT`).
 
-Канонические корни путей (задаются **один раз** в начале deploy-сессии):
+Канонические корни путей (задаются **один раз**; каждый исполнитель получает
+**полный** набор переменных явно — без наследования чужого shell):
 
 ```bash
 set -euo pipefail
@@ -47,11 +49,13 @@ AGENT="$AGENT_DATA_LOGICAL/agents/5bda2f3d-a61a-48d6-8663-2441802d68de"
 WF="$SKILL_ROOT_REAL"
 AGENT_REAL=$(realpath -e "$AGENT")
 REPO_ROOT="<клон moex-investment @ SHA>"
+# N43/N44: пустые/корневые пути + WF==SKILL_ROOT_REAL + BK==DEPLOY_ROOT
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 ```
 
-**BL10 (обязательно):** каждый шаг ниже начинается с **inline**-проверки
-(не вызов функции — в изолированном shell функция из другого блока недоступна).
-Пустой `WF=""` превращал `grep -F "$WF/"` в `grep -F "/"` → ложный успех.
+**BL10 + N43/N44 (обязательно):** каждый шаг ниже начинается с **inline**
+`set -euo pipefail` + `${VAR:?}` + `validate-env` (не вызов shell-функции).
+Пустой `WF=""` / `AGENT_REAL="/"` / рассинхрон WF≠SKILL_ROOT_REAL — отказ.
 
 ## 0. Предусловия
 
@@ -83,10 +87,13 @@ python3 -c "import json,hashlib,pathlib; p=pathlib.Path('$AGENT_REAL/profile.jso
 
 ```bash
 set -euo pipefail
-: "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" "${AGENT_DATA_LOGICAL:?}"
-case "$WF" in ""|"/"|".") echo "WF unsafe: <$WF>"; exit 1;; esac
-test -d "$BK" && test -d "$WF" && test -d "$AGENT_REAL" \
-  || { echo "BK/WF/AGENT_REAL must be directories"; exit 1; }
+: "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
+  "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
+case "$WF" in ""|"/"|"."|"..") echo "WF unsafe: <$WF>"; exit 1;; esac
+case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
+case "$BK" in ""|"/"|"."|"..") echo "BK unsafe"; exit 1;; esac
+case "$DEPLOY_ROOT" in ""|"/"|"."|"..") echo "DEPLOY_ROOT unsafe"; exit 1;; esac
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 touch "$BK/BEFORE_MARKER"
 cp -a "$AGENT_REAL/profile.json" "$BK/"
 cp -a "$WF/skill-1791618014068/SKILL.md" "$BK/OPT_SKILL.md"
@@ -105,11 +112,12 @@ test -s "$BK/SHA256SUMS" || { echo "empty SHA256SUMS"; exit 1; }
 
 ```bash
 set -euo pipefail
-: "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" "${AGENT_DATA_LOGICAL:?}"
-case "$WF" in ""|"/"|".") echo "WF unsafe: <$WF>"; exit 1;; esac
-case "$AGENT_REAL" in ""|"/"|".") echo "AGENT_REAL unsafe"; exit 1;; esac
-test -d "$BK" && test -d "$WF" && test -d "$AGENT_REAL" \
-  || { echo "BK/WF/AGENT_REAL must be directories"; exit 1; }
+: "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
+  "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
+case "$WF" in ""|"/"|"."|"..") echo "WF unsafe: <$WF>"; exit 1;; esac
+case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
+case "$BK" in ""|"/"|"."|"..") echo "BK unsafe"; exit 1;; esac
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 set -o noclobber
 (
   find "$WF" "$AGENT_REAL" -type f \
@@ -152,10 +160,10 @@ grep -F -- "$AGENT_REAL/" "$BK/MANIFEST_BEFORE.txt" >/dev/null \
 ```bash
 set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
-  "${AGENT_DATA_LOGICAL:?}" "${REPO_ROOT:?}"
-case "$WF" in ""|"/"|".") echo "WF unsafe"; exit 1;; esac
-test -d "$BK" && test -d "$WF" && test -d "$AGENT_REAL" && test -d "$REPO_ROOT/scripts" \
-  || { echo "BK/WF/AGENT_REAL/REPO_ROOT invalid"; exit 1; }
+  "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
+case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
+case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 CLI_ID=$(cat "$BK/CLI_SKILL_ID.txt")
 CLI_PATH_RAW=$(cat "$BK/CLI_SKILL_PATH.txt")
 test -n "$CLI_ID" && test -n "$CLI_PATH_RAW" || { echo "empty id/path"; exit 1; }
@@ -202,8 +210,12 @@ echo "4b ok"
 
 ```bash
 set -euo pipefail
-: "${REPO_ROOT:?}" "${CLI_PATH:?}"
-test -d "$REPO_ROOT/scripts" && test -d "$CLI_PATH" || exit 1
+: "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
+  "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" \
+  "${REPO_ROOT:?}" "${CLI_PATH:?}"
+case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+test -d "$CLI_PATH" || exit 1
 REPO_SKILL="$REPO_ROOT/docs/analyst_skill_patch/cli-analyst-bundle/SKILL.md"
 LIVE_SKILL="$CLI_PATH/SKILL.md"
 test -f "$LIVE_SKILL" || { echo "live SKILL.md missing"; exit 1; }
@@ -228,10 +240,10 @@ python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" skill-compare \
 ```bash
 set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
-  "${AGENT_DATA_LOGICAL:?}" "${REPO_ROOT:?}"
-case "$WF" in ""|"/"|".") echo "WF unsafe"; exit 1;; esac
-test -d "$BK" && test -d "$WF" && test -d "$AGENT_REAL" && test -d "$REPO_ROOT/scripts" \
-  || { echo "env dirs invalid"; exit 1; }
+  "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
+case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
+case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 test -f "$BK/MANIFEST_BEFORE.txt" || { echo "MANIFEST_BEFORE missing"; exit 1; }
 CLI_PATH=$(cat "$BK/CLI_SKILL_PATH_REAL.txt")
 test -n "$CLI_PATH" || exit 1
@@ -302,9 +314,12 @@ Unexpected → rollback 10a+10b.
 
 ```bash
 set -euo pipefail
-: "${BK:?}" "${WF:?}" "${AGENT_REAL:?}"
-case "$WF" in ""|"/"|".") echo "WF unsafe"; exit 1;; esac
-test -d "$BK" && test -d "$WF" && test -d "$AGENT_REAL" || exit 1
+: "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
+  "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
+case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
+case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
+case "$BK" in ""|"/"|"."|"..") echo "BK unsafe"; exit 1;; esac
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 cp -a "$BK/profile.json" "$AGENT_REAL/profile.json"
 cp -a "$BK/OPT_SKILL.md" "$WF/skill-1791618014068/SKILL.md"
 cp -a "$BK/POS_SKILL.md" "$WF/skill-1791618006478/SKILL.md"
@@ -320,10 +335,10 @@ test "$(sha256sum "$(realpath -e /workspace/invest/portfolio/optimizer/config/op
 ```bash
 set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
-  "${AGENT_DATA_LOGICAL:?}" "${REPO_ROOT:?}"
-case "$WF" in ""|"/"|".") echo "WF unsafe"; exit 1;; esac
-test -d "$BK" && test -d "$WF" && test -d "$AGENT_REAL" && test -d "$REPO_ROOT/scripts" \
-  || { echo "env dirs invalid"; exit 2; }
+  "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
+case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
+case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 2
 if [ ! -f "$BK/CLI_SKILL_ID.txt" ] && [ ! -f "$BK/CLI_SKILL_PATH.txt" ]; then
   echo "no create record — skip skill delete"; exit 0
 fi

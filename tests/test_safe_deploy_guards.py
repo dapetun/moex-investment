@@ -156,6 +156,16 @@ def test_4c_extra_frontmatter_key_fails() -> None:
         g.compare_skill_md(repo, live)
 
 
+def test_n41_orphan_indented_key_after_plain_scalar() -> None:
+    """Indented key-like line after plain description must fail (N41)."""
+    text = (
+        "---\nname: cli-analyst-bundle\ndescription: x\n"
+        "  allowed: all\n---\n\n# Body\n"
+    )
+    with pytest.raises(SystemExit, match="orphan indented"):
+        g.split_skill_md(text)
+
+
 def test_n34_missing_path_rejected(symlink_box: dict[str, Path]) -> None:
     missing = symlink_box["skill_root_logical"] / "no-such-skill"
     with pytest.raises(SystemExit, match="does not exist|outside"):
@@ -234,3 +244,57 @@ def test_rollback_path_guard_rejects_escape(
         text=True,
     )
     assert bad.returncode != 0
+
+
+def _env_for_validate(symlink_box: dict[str, Path], tmp_path: Path) -> dict[str, str]:
+    agents = symlink_box["sand"] / "agents" / "5bda2f3d-a61a-48d6-8663-2441802d68de"
+    agents.mkdir(parents=True, exist_ok=True)
+    deploy = tmp_path / "deploy-root"
+    deploy.mkdir(exist_ok=True)
+    skill_real = str(symlink_box["workflows_real"].resolve())
+    return {
+        "BK": str(deploy.resolve()),
+        "DEPLOY_ROOT": str(deploy.resolve()),
+        "WF": skill_real,
+        "SKILL_ROOT_REAL": skill_real,
+        "SKILL_ROOT_LOGICAL": str(symlink_box["skill_root_logical"]),
+        "AGENT_DATA_LOGICAL": str(symlink_box["agent_logical"]),
+        "AGENT_REAL": str(agents.resolve()),
+        "REPO_ROOT": str(ROOT),
+    }
+
+
+def test_n43_agent_real_root_rejected(
+    symlink_box: dict[str, Path], tmp_path: Path
+) -> None:
+    env = _env_for_validate(symlink_box, tmp_path)
+    env["AGENT_REAL"] = "/"
+    with pytest.raises(SystemExit, match="unsafe|root|absolute|short"):
+        g.validate_deploy_env(env, need_repo=True)
+
+
+def test_n44_wf_must_equal_skill_root_real(
+    symlink_box: dict[str, Path], tmp_path: Path
+) -> None:
+    env = _env_for_validate(symlink_box, tmp_path)
+    env["WF"] = str(tmp_path / "other-wf")
+    (tmp_path / "other-wf").mkdir()
+    with pytest.raises(SystemExit, match="WF != SKILL_ROOT_REAL"):
+        g.validate_deploy_env(env, need_repo=True)
+
+
+def test_validate_env_ok(symlink_box: dict[str, Path], tmp_path: Path) -> None:
+    env = _env_for_validate(symlink_box, tmp_path)
+    g.validate_deploy_env(env, need_repo=True)
+
+
+def test_n39_extract_safe_deploy_steps() -> None:
+    md = ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md"
+    blocks = g.extract_bash_steps(md.read_text(encoding="utf-8"))
+    assert len(blocks) >= 6
+    # критические шаги должны содержать validate-env (не только helper-тесты)
+    with_validate = [b for b in blocks if "validate-env" in b]
+    assert len(with_validate) >= 5, f"expected validate-env in steps, got {len(with_validate)}"
+    # и явный запрет AGENT_REAL=/
+    with_agent_case = [b for b in blocks if 'AGENT_REAL' in b and '"/"' in b]
+    assert with_agent_case, "SAFE_DEPLOY steps must case-reject AGENT_REAL=/"

@@ -294,4 +294,70 @@ if [[ $n35_rc -eq 0 ]]; then
 fi
 echo "PASS N35 extra frontmatter rejected (rc=$n35_rc)"
 
+# --- N41: orphan indented after plain scalar ---
+cat >"$LIVE" <<'EOF'
+---
+name: cli-analyst-bundle
+description: x
+  allowed: all
+---
+# Body
+ok
+EOF
+set +e
+$PY "$N_GUARDS" skill-compare "$N_REPO" "$N_LIVE" >/dev/null 2>&1
+n41_rc=$?
+set -e
+if [[ $n41_rc -eq 0 ]]; then
+  echo "FAIL N41: orphan indented accepted"; exit 1
+fi
+echo "PASS N41 orphan indented rejected (rc=$n41_rc)"
+
+# --- N39: extract steps from actual SAFE_DEPLOY.md ---
+SD="$ROOT/docs/analyst_skill_patch/SAFE_DEPLOY.md"
+N_COUNT=$($PY "$N_GUARDS" extract-steps "$(native "$SD")")
+test "$N_COUNT" -ge 6 || { echo "FAIL N39: too few bash blocks ($N_COUNT)"; exit 1; }
+echo "PASS N39 extract-steps count=$N_COUNT"
+
+# --- N43/N44: validate-env rejects AGENT_REAL=/ and WF mismatch ---
+AGENTS_DIR="$SAND/agents/5bda2f3d-a61a-48d6-8663-2441802d68de"
+mkdir -p "$AGENTS_DIR"
+N_AGENTS="$(native "$AGENTS_DIR")"
+N_SKILL_REAL="$(native "$SAND/workflows")"
+N_DEPLOY="$(native "$DEPLOY_ROOT")"
+export BK="$N_DEPLOY" DEPLOY_ROOT="$N_DEPLOY" WF="$N_SKILL_REAL" \
+  SKILL_ROOT_REAL="$N_SKILL_REAL" SKILL_ROOT_LOGICAL="$N_WF" \
+  AGENT_DATA_LOGICAL="$N_AGENT" AGENT_REAL="$N_AGENTS" REPO_ROOT="$(native "$ROOT")"
+$PY "$N_GUARDS" validate-env --need-repo >/dev/null
+echo "PASS validate-env ok on mock"
+
+mkdir -p "$TMP/other-wf"
+set +e
+AGENT_REAL="/" $PY "$N_GUARDS" validate-env --need-repo >/dev/null 2>&1
+n43_rc=$?
+WF="$(native "$TMP/other-wf")" $PY "$N_GUARDS" validate-env --need-repo >/dev/null 2>&1
+n44_rc=$?
+set -e
+export WF="$N_SKILL_REAL" AGENT_REAL="$N_AGENTS"
+if [[ $n43_rc -eq 0 ]]; then echo "FAIL N43 AGENT_REAL=/ accepted"; exit 1; fi
+if [[ $n44_rc -eq 0 ]]; then echo "FAIL N44 WF mismatch accepted"; exit 1; fi
+echo "PASS N43/N44 validate-env rejects (rc $n43_rc/$n44_rc)"
+
+# --- N39: run AGENT_REAL=/ case from SAFE_DEPLOY step-2 preface in env -i ---
+set +e
+env -i PATH="$PATH" BK="$N_DEPLOY" WF="$N_SKILL_REAL" AGENT_REAL="/" \
+  SKILL_ROOT_LOGICAL="$N_WF" AGENT_DATA_LOGICAL="$N_AGENT" \
+  SKILL_ROOT_REAL="$N_SKILL_REAL" DEPLOY_ROOT="$N_DEPLOY" REPO_ROOT="$(native "$ROOT")" \
+  bash --noprofile --norc -c '
+    set -euo pipefail
+    case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
+    echo should_not_reach
+  ' >/dev/null 2>&1
+sd_agent_rc=$?
+set -e
+if [[ $sd_agent_rc -eq 0 ]]; then
+  echo "FAIL N39/N43: SAFE_DEPLOY case AGENT_REAL=/ returned 0"; exit 1
+fi
+echo "PASS N39 SAFE_DEPLOY inline AGENT_REAL=/ rejected (rc=$sd_agent_rc)"
+
 echo "ALL SAFE_DEPLOY regression checks passed"
