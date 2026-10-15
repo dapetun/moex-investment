@@ -103,15 +103,16 @@ set +o noclobber
 
 ### 4a. Создать skill штатным инструментом
 
-1. Вызвать **create** платформы с именем frontmatter `cli-analyst-bundle`
+1. **До** create записать ожидаемое имя (N29):
+   `printf '%s\n' 'cli-analyst-bundle' > "$BK/CLI_SKILL_NAME.txt"`
+2. Вызвать **create** платформы с именем `cli-analyst-bundle`
    и содержимым `docs/analyst_skill_patch/cli-analyst-bundle/` @ зафиксированном SHA.
-2. Сохранить **оба** возвращённых поля **независимо**:
-   - `$BK/CLI_SKILL_ID.txt` — зарегистрированный ID (как вернула платформа);
-   - `$BK/CLI_SKILL_PATH.txt` — путь к каталогу/файлам skill;
-   - `$BK/CLI_SKILL_NAME.txt` — ожидаемое имя `cli-analyst-bundle`.
-3. **Не** вычислять path из id и наоборот.
-4. Если create вернул ошибку или одно из полей пусто — **стоп**, шаг 10a
-   не нужен (файлы ещё не менялись), skill не трогать дальше.
+3. Сохранить возвращённые поля **независимо** (не выводить одно из другого):
+   - `$BK/CLI_SKILL_ID.txt` — ID как вернула платформа;
+   - `$BK/CLI_SKILL_PATH.txt` — path как вернула платформа.
+4. Если create ошибся или ID/path пусты: **не** писать частичные ID/path
+   (или удалить неполные); **стоп**; 10a не нужен. Если после сбоя
+   остались частичные записи ID/path — см. 10b (`exit 2`).
 
 ### 4b. Проверка path (без rm)
 
@@ -145,23 +146,22 @@ for part in raw.parts[1:]:
             sys.exit(1)
 print("path ok", cli)
 PY
-# не было в BEFORE
-grep -Fq " $CLI_PATH/" "$BK/MANIFEST_BEFORE.txt" \
-  && { echo "path existed before deploy"; exit 1; }
-grep -Eq " ${CLI_PATH}$" "$BK/MANIFEST_BEFORE.txt" \
-  && { echo "path existed before deploy (file)"; exit 1; }
+# не было в BEFORE (BL6: if/then, не grep&&exit — иначе rc=1 на успехе)
+if grep -Fq " $CLI_PATH/" "$BK/MANIFEST_BEFORE.txt" \
+   || grep -Eq " ${CLI_PATH}$" "$BK/MANIFEST_BEFORE.txt"; then
+  echo "path existed before deploy"; exit 1
+fi
 # не известные skills Аналитика/радара
 for known in skill-1791618014068 skill-1791618006478 skill-1791617999761 \
              skill-1791617992518 skill-1791617966204 skill-1791617976741; do
-  [ "$CLI_PATH" = "$ROOT_REAL/$known" ] && {
+  if [ "$CLI_PATH" = "$ROOT_REAL/$known" ]; then
     echo "collides with existing $known"; exit 1
-  }
+  fi
 done
 # имя в реестре = cli-analyst-bundle; ID совпадает с сохранённым
 # (через штатный list/get платформы — не выдумывать из path)
+echo "4b ok"
 ```
-
-Экспорт для python: `ROOT_REAL`, `CLI_PATH_RAW`, `CLI_PATH`.
 
 Любой отказ 4b → **не** править OPT/POS/QC/profile/SPEC; выполнить
 только **10b** (удаление только что созданного skill по ID), затем стоп.
@@ -323,9 +323,17 @@ test "$(sha256sum /workspace/invest/portfolio/optimizer/config/optimizer.yaml | 
 удаление одноимённого skill, который существовал **до** этого deploy.
 
 ```bash
-test -f "$BK/CLI_SKILL_ID.txt" && test -f "$BK/CLI_SKILL_PATH.txt" \
-  && test -f "$BK/CLI_SKILL_NAME.txt" \
-  || { echo "no create record — skip skill delete"; exit 0; }
+# Нет ни одной записи create → skill не создавали; skip ок
+if [ ! -f "$BK/CLI_SKILL_ID.txt" ] && [ ! -f "$BK/CLI_SKILL_PATH.txt" ]; then
+  echo "no create record — skip skill delete"; exit 0
+fi
+# Частичная запись (N29): есть ID или PATH, но не полный набор → не молчать
+if [ ! -f "$BK/CLI_SKILL_ID.txt" ] || [ ! -f "$BK/CLI_SKILL_PATH.txt" ] \
+   || [ ! -f "$BK/CLI_SKILL_NAME.txt" ]; then
+  echo "incomplete create record — refuse silent skip; operator must resolve"
+  ls -la "$BK"/CLI_SKILL_*.txt 2>/dev/null || true
+  exit 2
+fi
 CLI_ID=$(cat "$BK/CLI_SKILL_ID.txt")
 CLI_PATH=$(realpath -m "$(cat "$BK/CLI_SKILL_PATH.txt")")
 CLI_NAME=$(cat "$BK/CLI_SKILL_NAME.txt")
@@ -339,7 +347,6 @@ CLI_NAME=$(cat "$BK/CLI_SKILL_NAME.txt")
 
 Если delete платформы недоступен или отклонён — файлы уже восстановлены
 (10a); skill может остаться в глобальной библиотеке → **exit 2**, явное
-сообщение владельцу (не rc 0 при «пропущенном» удалении после неполного
-create-записи — см. диагностику).
+сообщение владельцу.
 
 Артефакты CLI в изолированном DATA_DIR с профилем не откатываются.
