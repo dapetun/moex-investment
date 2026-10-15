@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 
-def _resolve(p: Path) -> Path:
-    return p.expanduser().resolve(strict=False)
+def _resolve(p: Path, *, strict: bool = False) -> Path:
+    return p.expanduser().resolve(strict=strict)
 
 
 def _under(child: Path, root: Path) -> bool:
@@ -28,9 +28,9 @@ def assert_path_in_skill_root(
     """Вернуть realpath CLI-пути, если он остаётся под корнем skill.
 
     Допускает штатный symlink/junction ``agent-data → sand-data``:
-    промежуточные ссылки, чей target — предок (или сам) реального skill root /
-    agent-data, допустимы. Ссылки и пути, уводящие за пределы этого дерева, —
-    отказ. Компонент ``..`` в исходном пути запрещён (до resolve).
+    промежуточные ссылки, чей target равен agent-data/skill-root или лежит
+    **внутри** этих деревьев. Target-предки (в т.ч. ``/``) — отказ (N38).
+    Путь должен существовать (N34). Компонент ``..`` запрещён до resolve.
     """
     raw = Path(cli_path_raw)
     if ".." in raw.parts:
@@ -42,13 +42,14 @@ def assert_path_in_skill_root(
         agent_data_logical = str(skill_root.parent)
     agent_real = _resolve(Path(agent_data_logical))
 
-    cli_real = _resolve(raw)
+    try:
+        cli_real = _resolve(raw, strict=True)
+    except FileNotFoundError as e:
+        raise SystemExit(f"path does not exist: {cli_path_raw}") from e
     if not _under(cli_real, root_real):
         raise SystemExit(f"path outside SKILL_ROOT: {cli_real} (root={root_real})")
 
-    # Обход логических компонент: escape-symlink/junction за пределы дерева.
-    # На Windows junction часто не is_symlink(), но resolve уже отсёк финал;
-    # здесь ловим промежуточные ссылки, если ОС их помечает.
+    # Обход логических компонент: escape-symlink за пределы дерева.
     cur = Path(raw.anchor) if raw.anchor else Path("/")
     parts = raw.parts[1:] if raw.is_absolute() else raw.parts
     for part in parts:
@@ -56,14 +57,9 @@ def assert_path_in_skill_root(
         if not cur.is_symlink():
             continue
         tgt = _resolve(cur)
-        under_agent = (
-            tgt == agent_real
-            or _under(tgt, agent_real)
-            or _under(agent_real, tgt)
-        )
-        under_root = (
-            tgt == root_real or _under(tgt, root_real) or _under(root_real, tgt)
-        )
+        # Только target == корень или внутри корня; НЕ предок корня (/, /home, …).
+        under_agent = tgt == agent_real or _under(tgt, agent_real)
+        under_root = tgt == root_real or _under(tgt, root_real)
         if not (under_agent or under_root):
             raise SystemExit(f"symlink escape at {cur} -> {tgt}")
     return str(cli_real)
@@ -110,14 +106,25 @@ def _norm_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+_ALLOWED_FM_KEYS = frozenset({"name", "description"})
+
+
 def compare_skill_md(repo_text: str, live_text: str) -> None:
     """Отказать, если name/тело не совпали; description — по нормализации пробелов.
 
     Подтверждённая нормализация платформы (pa-1405): ``>`` → ``>-``, перенос строк
     в description. Тело инструкций после frontmatter — байт-в-байт.
+    Допустимы только ключи name/description (N35); лишние поля — отказ.
     """
     rf, rb = split_skill_md(repo_text)
     lf, lb = split_skill_md(live_text)
+    for label, fields in (("repo", rf), ("live", lf)):
+        extra = set(fields) - _ALLOWED_FM_KEYS
+        if extra:
+            raise SystemExit(f"unexpected frontmatter keys in {label}: {sorted(extra)}")
+        missing = _ALLOWED_FM_KEYS - set(fields)
+        if missing:
+            raise SystemExit(f"missing frontmatter keys in {label}: {sorted(missing)}")
     if rf.get("name") != lf.get("name"):
         raise SystemExit(
             f"skill name mismatch: repo={rf.get('name')!r} live={lf.get('name')!r}"

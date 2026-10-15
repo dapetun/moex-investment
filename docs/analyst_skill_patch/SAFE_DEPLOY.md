@@ -38,14 +38,32 @@ BK="$DEPLOY_ROOT"   # единственный корень: backup, MANIFEST_*,
 Канонические корни путей:
 
 ```bash
+set -euo pipefail
 AGENT_DATA_LOGICAL=/home/box/agent-data
 SKILL_ROOT_LOGICAL="$AGENT_DATA_LOGICAL/workflows"
 AGENT_DATA_REAL=$(realpath -e "$AGENT_DATA_LOGICAL")
 SKILL_ROOT_REAL=$(realpath -e "$SKILL_ROOT_LOGICAL")
-AGENT="$SKILL_ROOT_LOGICAL/../agents/5bda2f3d-a61a-48d6-8663-2441802d68de"
+AGENT="$AGENT_DATA_LOGICAL/agents/5bda2f3d-a61a-48d6-8663-2441802d68de"
 # для find/манифеста — только REAL:
 WF="$SKILL_ROOT_REAL"
 AGENT_REAL=$(realpath -e "$AGENT")
+
+# BL10: в начале каждого шага — иначе fail-open на пустом find:
+require_deploy_env() {
+  : "${BK:?BK required}"
+  : "${WF:?WF required}"
+  : "${AGENT_REAL:?AGENT_REAL required}"
+  : "${SKILL_ROOT_LOGICAL:?SKILL_ROOT_LOGICAL required}"
+  : "${AGENT_DATA_LOGICAL:?AGENT_DATA_LOGICAL required}"
+  test -d "$BK" && test -d "$WF" && test -d "$AGENT_REAL" \
+    || { echo "BK/WF/AGENT_REAL must be directories"; exit 1; }
+}
+require_deploy_env_repo() {
+  require_deploy_env
+  : "${REPO_ROOT:?REPO_ROOT required}"
+  test -d "$REPO_ROOT/scripts" \
+    || { echo "REPO_ROOT missing scripts/"; exit 1; }
+}
 ```
 
 ## 0. Предусловия
@@ -77,6 +95,7 @@ python3 -c "import json,hashlib,pathlib; p=pathlib.Path('$AGENT_REAL/profile.jso
 ## 2. Резервная копия → `$BK`
 
 ```bash
+require_deploy_env
 touch "$BK/BEFORE_MARKER"
 cp -a "$AGENT_REAL/profile.json" "$BK/"
 cp -a "$WF/skill-1791618014068/SKILL.md" "$BK/OPT_SKILL.md"
@@ -94,6 +113,7 @@ test -s "$BK/SHA256SUMS" || { echo "empty SHA256SUMS"; exit 1; }
 До create skill. Писать **один раз** в `$BK` (`noclobber`).
 
 ```bash
+require_deploy_env
 set -o noclobber
 (
   find "$WF" "$AGENT_REAL" -type f \
@@ -109,6 +129,11 @@ set -o noclobber
 ) > "$BK/MANIFEST_BEFORE.txt" || { echo "MANIFEST_BEFORE write failed"; exit 1; }
 set +o noclobber
 test -s "$BK/MANIFEST_BEFORE.txt" || { echo "MANIFEST_BEFORE empty"; exit 1; }
+# BL10: манифест обязан содержать реальные деревья (не пустой find при WF="")
+grep -F "$WF/" "$BK/MANIFEST_BEFORE.txt" >/dev/null \
+  || { echo "MANIFEST_BEFORE missing WF entries"; exit 1; }
+grep -F "$AGENT_REAL/" "$BK/MANIFEST_BEFORE.txt" >/dev/null \
+  || { echo "MANIFEST_BEFORE missing AGENT_REAL entries"; exit 1; }
 ```
 
 Записать в `$BK/BEFORE.txt` шаг 1 + список skills платформы.
@@ -128,19 +153,22 @@ test -s "$BK/MANIFEST_BEFORE.txt" || { echo "MANIFEST_BEFORE empty"; exit 1; }
 
 ```bash
 REPO_ROOT="<клон moex-investment @ SHA>"   # из задания
+require_deploy_env_repo
 CLI_ID=$(cat "$BK/CLI_SKILL_ID.txt")
 CLI_PATH_RAW=$(cat "$BK/CLI_SKILL_PATH.txt")
 test -n "$CLI_ID" && test -n "$CLI_PATH_RAW" || { echo "empty id/path"; exit 1; }
 
 # BL8: любой ненулевой python → exit 1; «4b ok» только после успеха
+# N34: path-check требует существования пути (strict)
 python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" path-check \
   "$CLI_PATH_RAW" "$SKILL_ROOT_LOGICAL" "$AGENT_DATA_LOGICAL" \
   > "$BK/CLI_SKILL_PATH_REAL.txt" || exit 1
 CLI_PATH=$(cat "$BK/CLI_SKILL_PATH_REAL.txt")
+test -d "$CLI_PATH" || { echo "CLI_PATH not a directory"; exit 1; }
 
-# existed before — сравнение в realpath-нотации (BL9)
+# existed before — fixed-string (N37), realpath-нотация (BL9)
 if grep -Fq " $CLI_PATH/" "$BK/MANIFEST_BEFORE.txt" \
-   || grep -Eq " ${CLI_PATH}$" "$BK/MANIFEST_BEFORE.txt"; then
+   || grep -Fq " $CLI_PATH" "$BK/MANIFEST_BEFORE.txt"; then
   echo "path existed before deploy"; exit 1
 fi
 for known in skill-1791618014068 skill-1791618006478 skill-1791617999761 \
@@ -185,6 +213,7 @@ python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" skill-compare \
 ## 6. MANIFEST_AFTER
 
 ```bash
+require_deploy_env_repo
 test -f "$BK/MANIFEST_BEFORE.txt" || { echo "MANIFEST_BEFORE missing"; exit 1; }
 CLI_PATH=$(cat "$BK/CLI_SKILL_PATH_REAL.txt")
 test -n "$CLI_PATH" || exit 1
@@ -254,6 +283,7 @@ Unexpected → rollback 10a+10b.
 ### 10a. Файлы
 
 ```bash
+require_deploy_env
 cp -a "$BK/profile.json" "$AGENT_REAL/profile.json"
 cp -a "$BK/OPT_SKILL.md" "$WF/skill-1791618014068/SKILL.md"
 cp -a "$BK/POS_SKILL.md" "$WF/skill-1791618006478/SKILL.md"
@@ -267,6 +297,7 @@ test "$(sha256sum "$(realpath -e /workspace/invest/portfolio/optimizer/config/op
 ### 10b. Skill delete (платформа; тот же path guard)
 
 ```bash
+require_deploy_env_repo
 if [ ! -f "$BK/CLI_SKILL_ID.txt" ] && [ ! -f "$BK/CLI_SKILL_PATH.txt" ]; then
   echo "no create record — skip skill delete"; exit 0
 fi
@@ -276,9 +307,14 @@ if [ ! -s "$BK/CLI_SKILL_ID.txt" ] || [ ! -s "$BK/CLI_SKILL_PATH.txt" ] \
 fi
 CLI_ID=$(cat "$BK/CLI_SKILL_ID.txt")
 CLI_PATH_RAW=$(cat "$BK/CLI_SKILL_PATH.txt")
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" path-check \
-  "$CLI_PATH_RAW" "$SKILL_ROOT_LOGICAL" "$AGENT_DATA_LOGICAL" >/dev/null || exit 2
-# get(ID): name==cli-analyst-bundle, path совпадает; path не в MANIFEST_BEFORE
+CLI_PATH=$(python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" path-check \
+  "$CLI_PATH_RAW" "$SKILL_ROOT_LOGICAL" "$AGENT_DATA_LOGICAL") || exit 2
+# N36: path не должен быть в MANIFEST_BEFORE (иначе чужой/старый skill)
+if grep -Fq " $CLI_PATH/" "$BK/MANIFEST_BEFORE.txt" \
+   || grep -Fq " $CLI_PATH" "$BK/MANIFEST_BEFORE.txt"; then
+  echo "10b: path existed before deploy — refuse delete"; exit 2
+fi
+# get(ID): name==cli-analyst-bundle, path совпадает с CLI_PATH
 # только тогда: штатный delete(skill_id=CLI_ID)
 # mismatch → не удалять, exit 2
 ```

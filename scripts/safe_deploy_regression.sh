@@ -221,4 +221,65 @@ if [[ -s "$PARTIAL/CLI_SKILL_ID.txt" ]]; then
 fi
 echo "PASS partial-create incomplete ID detected"
 
+# --- BL10: unset WF must fail require_deploy_env ---
+set +e
+bl10_out=$(
+  BK="$DEPLOY_ROOT"
+  WF=""
+  AGENT_REAL="$N_AGENT"
+  SKILL_ROOT_LOGICAL="$N_WF"
+  AGENT_DATA_LOGICAL="$N_AGENT"
+  (
+    set -euo pipefail
+    : "${BK:?BK required}"
+    : "${WF:?WF required}"
+    : "${AGENT_REAL:?AGENT_REAL required}"
+    test -d "$BK" && test -d "$WF" && test -d "$AGENT_REAL" \
+      || { echo "BK/WF/AGENT_REAL must be directories"; exit 1; }
+  ) 2>&1
+)
+bl10_rc=$?
+set -e
+if [[ $bl10_rc -eq 0 ]]; then
+  echo "FAIL BL10: empty WF returned 0"; exit 1
+fi
+echo "PASS BL10 unset WF rejected (rc=$bl10_rc)"
+
+# --- N34: missing path nonzero ---
+set +e
+$PY "$N_GUARDS" path-check "$N_NOPE" "$N_WF" "$N_AGENT" >/dev/null 2>&1
+n34_rc=$?
+set -e
+if [[ $n34_rc -eq 0 ]]; then
+  echo "FAIL N34: missing path returned 0"; exit 1
+fi
+echo "PASS N34 missing path rejected (rc=$n34_rc)"
+
+# --- N35: extra frontmatter key ---
+cat >"$REPO" <<'EOF'
+---
+name: cli-analyst-bundle
+description: x
+---
+# Body
+ok
+EOF
+cat >"$LIVE" <<'EOF'
+---
+name: cli-analyst-bundle
+description: x
+allowed-agents: all
+---
+# Body
+ok
+EOF
+set +e
+$PY "$N_GUARDS" skill-compare "$N_REPO" "$N_LIVE" >/dev/null 2>&1
+n35_rc=$?
+set -e
+if [[ $n35_rc -eq 0 ]]; then
+  echo "FAIL N35: extra FM key accepted"; exit 1
+fi
+echo "PASS N35 extra frontmatter rejected (rc=$n35_rc)"
+
 echo "ALL SAFE_DEPLOY regression checks passed"

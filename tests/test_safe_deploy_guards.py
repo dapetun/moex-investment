@@ -146,6 +146,26 @@ def test_4c_name_mismatch_fails() -> None:
         g.compare_skill_md(repo, live)
 
 
+def test_4c_extra_frontmatter_key_fails() -> None:
+    repo = "---\nname: cli-analyst-bundle\ndescription: x\n---\n\n# Body\n"
+    live = (
+        "---\nname: cli-analyst-bundle\ndescription: x\n"
+        "allowed-agents: all\n---\n\n# Body\n"
+    )
+    with pytest.raises(SystemExit, match="unexpected frontmatter"):
+        g.compare_skill_md(repo, live)
+
+
+def test_n34_missing_path_rejected(symlink_box: dict[str, Path]) -> None:
+    missing = symlink_box["skill_root_logical"] / "no-such-skill"
+    with pytest.raises(SystemExit, match="does not exist|outside"):
+        g.assert_path_in_skill_root(
+            str(missing),
+            str(symlink_box["skill_root_logical"]),
+            agent_data_logical=str(symlink_box["agent_logical"]),
+        )
+
+
 def test_bl9_manifest_keys_canonical(symlink_box: dict[str, Path], tmp_path: Path) -> None:
     logical = str(
         symlink_box["agent_logical"] / "workflows" / "skill-1791618014068" / "SKILL.md"
