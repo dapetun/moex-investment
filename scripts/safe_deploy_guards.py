@@ -286,11 +286,14 @@ def normalize_bash_block(text: str) -> str:
 
 
 def document_sha256(md_text: str) -> str:
-    """Полный sha256 текста SAFE_DEPLOY.md (закрывает вставки вне pin-блоков)."""
-    # Нормализация EOL → LF; содержимое иначе байт-в-байт как в репо.
-    norm = md_text.replace("\r\n", "\n").replace("\r", "\n")
-    if not norm.endswith("\n"):
-        norm += "\n"
+    """Полный sha256 текста SAFE_DEPLOY.md (закрывает вставки вне pin-блоков).
+
+    N49: любой ``\\r`` — отказ (без CR→LF нормализации / коллизий).
+    Допускается только добавление финального ``\\n``, если его нет.
+    """
+    if "\r" in md_text:
+        raise SystemExit("SAFE_DEPLOY contains CR (\\r); refuse (N49)")
+    norm = md_text if md_text.endswith("\n") else md_text + "\n"
     return hashlib.sha256(norm.encode("utf-8")).hexdigest()
 
 
@@ -467,10 +470,19 @@ def main(argv: list[str]) -> int:
         print(len(blocks))
         return 0
     if cmd == "check-hashes":
-        md = Path(argv[2]).read_text(encoding="utf-8")
+        md_path = Path(argv[2])
         fixture = Path(argv[3]) if len(argv) > 3 else None
+        md = md_path.read_text(encoding="utf-8")
         assert_safe_deploy_block_hashes(md, fixture)
-        print("SAFE_DEPLOY block hashes ok")
+        doc = document_sha256(md)
+        fix_path = fixture or (
+            Path(__file__).resolve().parents[1]
+            / "tests"
+            / "fixtures"
+            / "safe_deploy_block_hashes.json"
+        )
+        fix_sha = hashlib.sha256(fix_path.read_bytes()).hexdigest()
+        print(f"SAFE_DEPLOY block hashes ok document_sha256={doc} fixture_sha256={fix_sha}")
         return 0
     print(f"unknown command {cmd}", file=sys.stderr)
     return 2

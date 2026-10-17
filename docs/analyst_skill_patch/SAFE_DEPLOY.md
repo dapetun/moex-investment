@@ -1,13 +1,14 @@
-# Безопасный deploy Permission A
+# Безопасный deploy Permission A (не выполнять без подтверждения)
 
+В этой подготовке deploy не выполняется: только текст процедуры и guards.
 Пакет: `cli-analyst-bundle` + `live_patches/*` @ репо SHA, зафиксированный в задании.
 
 Учёт операций и анти-параллель: `ops/DEPLOY_OPS.md`  
 (уникальный `deploy_op_id`, статусы submitted→…→verified/failed/rolled_back/cancelled).
 Решение владельца: `ops/DECISION_PERMISSION_A_*.md` + явная санкция на apply в задании.
 
-Хелперы (обязательны на шагах 2+/4b/4c/6/10):  
-`scripts/safe_deploy_guards.py` — path-check / skill-compare / canon / **validate-env**.  
+Хелперы (обязательны на шагах 0/2+/4b/4c/6/10):  
+`scripts/safe_deploy_guards.py` — path-check / skill-compare / canon / **validate-env** / **check-hashes**.  
 Регрессия: `scripts/safe_deploy_regression.sh`, `tests/test_safe_deploy_guards.py`
 (в т.ч. прогон inline-фрагментов из **этого** файла — N39).
 
@@ -72,6 +73,17 @@ BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
 - Штатный create/delete доступен.
 - Одноимённый `cli-analyst-bundle` ещё не зарегистрирован — иначе **стоп**
   (не удалять чужой автоматически).
+- **N39/N47 (обязательно до любого apply):** сверить pin документа:
+
+```bash
+set -euo pipefail
+REPO_ROOT="${REPO_ROOT:?}"
+SD="$REPO_ROOT/docs/analyst_skill_patch/SAFE_DEPLOY.md"
+FIX="$REPO_ROOT/tests/fixtures/safe_deploy_block_hashes.json"
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" check-hashes "$SD" "$FIX" || exit 1
+# Сверить document_sha256 и sha256(FIX) с ops/ledger.md § Pin values (N47).
+# Несовпадение — стоп; не перегенерировать fixture во время deploy.
+```
 
 ## 1. Проверка актуальных версий
 

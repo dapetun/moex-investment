@@ -389,11 +389,16 @@ def test_n39_document_pin_catches_a1_a18_outside_critical_blocks() -> None:
     with pytest.raises(SystemExit, match="document hash"):
         g.assert_safe_deploy_block_hashes(a17)
 
-    # A18: убрать ключевое предупреждение / Permission A
-    a18 = md.replace("Permission A", "Permission X", 1)
+    # A18: убрать ключевое предупреждение
+    assert "не выполнять без подтверждения" in md
+    a18 = md.replace("не выполнять без подтверждения", "", 1)
     assert a18 != md
     with pytest.raises(SystemExit, match="document hash"):
         g.assert_safe_deploy_block_hashes(a18)
+
+    # N49: CR в документе — отказ (не коллизия с LF)
+    with pytest.raises(SystemExit, match=r"\\\\r|CR"):
+        g.document_sha256(md.replace("\n", "\r\n", 1))
 
 
 def test_n39_mutations_m1_m4_detected() -> None:
