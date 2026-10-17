@@ -10,3 +10,4 @@
 | â€” (notes fix) | cur-20261015-1640 | â€” | 3a3561b | 1625 | submitted | Close N39/N41/N43/N44; review then Permission A apply. |
 | â€” (BL11+N39) | cur-20261015-1655 | â€” | 034b17f | 1640 | submitted | Fix BL11 export + N39 execute SD preamble after REJECT. |
 | — (N39+N45) | cur-20261015-1710 | — | 4edde39 | 1655 | submitted | Integrity M1-M4 + strict agent id after REJECT@034b17f. |
+| — (N45+M4-9) | cur-20261015-1730 | — | 9a701a7 | 1710 | submitted | Parent agents/ + integrity M4-M9 after REJECT@4edde39. |
