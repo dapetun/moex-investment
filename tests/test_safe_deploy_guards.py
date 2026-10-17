@@ -350,12 +350,57 @@ def test_n39_mutations_m1_m4_detected() -> None:
     with pytest.raises(SystemExit, match="path-check missing"):
         g.assert_safe_deploy_integrity(mut3)
 
-    # M4: вырезать skill из allowlist шага 6
+    # M4: добавить чужой skill в allowlist
     step6 = next(b for b in blocks if "allowed_exact" in b and "MANIFEST_AFTER" in b)
-    bad6 = step6.replace("skill-1791618014068", "skill-REMOVED")
+    bad6 = step6.replace(
+        'g.canonicalize_path("/workspace/invest/portfolio/analysis_spec.md"),',
+        'g.canonicalize_path("/workspace/invest/portfolio/analysis_spec.md"),\n'
+        '    g.canonicalize_path("/home/box/agent-data/workflows/skill-1791457276248/SKILL.md"),',
+    )
     mut4 = md.replace(step6, bad6)
-    with pytest.raises(SystemExit, match="allowlist missing"):
+    with pytest.raises(SystemExit, match="allowlist mismatch"):
         g.assert_safe_deploy_integrity(mut4)
+
+    # M5: убрать export из шага 2
+    step2 = next(b for b in blocks if "BEFORE_MARKER" in b)
+    bad2 = "\n".join(ln for ln in step2.splitlines() if "export BK" not in ln)
+    mut5 = md.replace(step2, bad2)
+    with pytest.raises(SystemExit, match="missing export BK"):
+        g.assert_safe_deploy_integrity(mut5)
+
+    # M6: || true вместо || exit
+    bad10a_true = step10a.replace("|| exit 1", "|| true")
+    mut6 = md.replace(step10a, bad10a_true)
+    with pytest.raises(SystemExit, match=r"\|\| exit"):
+        g.assert_safe_deploy_integrity(mut6)
+
+    # M8: отключить сравнение хешей
+    bad6_false = step6.replace("before.get(f) != h", "False")
+    mut8 = md.replace(step6, bad6_false)
+    with pytest.raises(SystemExit, match="before.get"):
+        g.assert_safe_deploy_integrity(mut8)
+
+    # M9: set +e
+    bad4b_sete = step4b.replace("set -euo pipefail", "set +e", 1)
+    mut9 = md.replace(step4b, bad4b_sete)
+    with pytest.raises(SystemExit, match="set -euo pipefail"):
+        g.assert_safe_deploy_integrity(mut9)
+
+
+def test_n45_rejects_agents_under_workflows(
+    symlink_box: dict[str, Path], tmp_path: Path
+) -> None:
+    """workflows/agents/<id> не должен проходить (N45 parent check)."""
+    env = _env_for_validate(symlink_box, tmp_path)
+    fake = (
+        symlink_box["workflows_real"]
+        / "agents"
+        / "5bda2f3d-a61a-48d6-8663-2441802d68de"
+    )
+    fake.mkdir(parents=True)
+    env["AGENT_REAL"] = str(fake.resolve())
+    with pytest.raises(SystemExit, match="parent must be"):
+        g.validate_deploy_env(env, need_repo=True)
 
 
 def test_n39_execute_step2_preamble_from_sd(
@@ -397,12 +442,12 @@ def test_n45_agent_real_must_be_under_agents(
 ) -> None:
     env = _env_for_validate(symlink_box, tmp_path)
     env["AGENT_REAL"] = str(symlink_box["sand"].resolve())  # корень agent-data real
-    with pytest.raises(SystemExit, match="agents/|AGENT_DATA root"):
+    with pytest.raises(SystemExit, match="parent must be"):
         g.validate_deploy_env(env, need_repo=True)
     agents_only = symlink_box["sand"] / "agents"
     agents_only.mkdir(exist_ok=True)
     env["AGENT_REAL"] = str(agents_only.resolve())
-    with pytest.raises(SystemExit, match="agents/<agent_id>|not agents/"):
+    with pytest.raises(SystemExit, match="parent must be|unexpected agent id"):
         g.validate_deploy_env(env, need_repo=True)
     wrong = symlink_box["sand"] / "agents" / "00000000-0000-0000-0000-000000000000"
     wrong.mkdir(exist_ok=True)

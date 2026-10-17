@@ -79,23 +79,18 @@ def validate_deploy_env(env: dict[str, str] | None = None, *, need_repo: bool = 
         raise SystemExit(
             f"AGENT_REAL outside AGENT_DATA tree: {agent_real} not under {agent_data_real}"
         )
-    # N45: AGENT_REAL = …/agents/<точный id Аналитика>, не корень и не …/agents
+    # N45: parent(AGENT_REAL) == AGENT_DATA_REAL/agents, имя = id Аналитика
     _EXPECTED_AGENT_ID = "5bda2f3d-a61a-48d6-8663-2441802d68de"
-    if agent_real == agent_data_real:
-        raise SystemExit("AGENT_REAL must be under agents/, not AGENT_DATA root")
-    parts = list(agent_real.parts)
-    if "agents" not in parts:
-        raise SystemExit(f"AGENT_REAL missing agents/ segment: {agent_real}")
-    idx = parts.index("agents")
-    if idx >= len(parts) - 1:
-        raise SystemExit("AGENT_REAL must be agents/<agent_id>, not agents/")
-    agent_id = parts[idx + 1]
-    if agent_id != _EXPECTED_AGENT_ID:
+    agents_dir = agent_data_real / "agents"
+    if agent_real.parent != agents_dir:
         raise SystemExit(
-            f"AGENT_REAL unexpected agent id: {agent_id!r} (want {_EXPECTED_AGENT_ID})"
+            f"AGENT_REAL parent must be {agents_dir}, got {agent_real.parent}"
         )
-    if idx + 1 != len(parts) - 1:
-        raise SystemExit(f"AGENT_REAL must end at agent id dir: {agent_real}")
+    if agent_real.name != _EXPECTED_AGENT_ID:
+        raise SystemExit(
+            f"AGENT_REAL unexpected agent id: {agent_real.name!r} "
+            f"(want {_EXPECTED_AGENT_ID})"
+        )
     if not _under(skill_real, agent_data_real):
         raise SystemExit(
             f"SKILL_ROOT_REAL outside AGENT_DATA: {skill_real} not under {agent_data_real}"
@@ -282,6 +277,14 @@ def assert_safe_deploy_integrity(md_text: str) -> None:
         "step10b",
     )
 
+    _ALLOWLIST_EXACT = (
+        "/home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de/profile.json",
+        "/home/box/agent-data/workflows/skill-1791618014068/SKILL.md",
+        "/home/box/agent-data/workflows/skill-1791618006478/SKILL.md",
+        "/home/box/agent-data/workflows/skill-1791617999761/SKILL.md",
+        "/workspace/invest/portfolio/analysis_spec.md",
+    )
+
     for label, block in (
         ("step2", step2),
         ("step3", step3),
@@ -290,24 +293,32 @@ def assert_safe_deploy_integrity(md_text: str) -> None:
         ("step10a", step10a),
         ("step10b", step10b),
     ):
+        if not block.lstrip().startswith("set -euo pipefail"):
+            raise SystemExit(f"{label} must start with set -euo pipefail")
         if "validate-env" not in block:
             raise SystemExit(f"{label} missing validate-env")
-        if "export BK" not in block and 'BK="$BK"' not in block:
-            raise SystemExit(f"{label} missing BL11 env pass-through")
+        if "export BK" not in block:
+            raise SystemExit(f"{label} missing export BK (M5)")
+        if 'BK="$BK"' not in block:
+            raise SystemExit(f"{label} missing BL11 env prefix BK=")
+        if not re.search(r"validate-env[^\n]*\|\|\s*exit\s+[12]", block):
+            raise SystemExit(f"{label} validate-env must use || exit 1|2 (not || true)")
         if 'case "$AGENT_REAL"' not in block:
             raise SystemExit(f"{label} missing case AGENT_REAL")
+        case_body = block.split('case "$AGENT_REAL"', 1)[1].split("esac", 1)[0]
+        if '"/"' not in case_body:
+            raise SystemExit(f"{label} AGENT_REAL case must reject /")
 
     if not re.search(r"path-check[\s\S]{0,200}\|\|\s*exit\s+1", step4b):
         raise SystemExit("step4b path-check missing || exit 1 (BL8)")
-    for needle in (
-        "profile.json",
-        "skill-1791618014068",
-        "skill-1791618006478",
-        "skill-1791617999761",
-        "analysis_spec.md",
-    ):
-        if needle not in step6:
-            raise SystemExit(f"step6 allowlist missing {needle}")
+    # M4: allowlist — ровно 5 путей, без лишних skill-*
+    paths = re.findall(r'g\.canonicalize_path\("([^"]+)"\)', step6)
+    if tuple(paths) != _ALLOWLIST_EXACT:
+        raise SystemExit(
+            f"step6 allowlist mismatch: got {paths!r} want {list(_ALLOWLIST_EXACT)!r}"
+        )
+    if "before.get(f) != h" not in step6:
+        raise SystemExit("step6 missing before.get(f) != h check (M8)")
 
 
 def main(argv: list[str]) -> int:
