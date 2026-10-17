@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# SUPERSEDED — SAFE_DEPLOY заменён MINIMAL_DEPLOY. Не использовать в CI/deploy.
+# Канон: docs/analyst_skill_patch/MINIMAL_DEPLOY.md + tests/test_minimal_deploy.py
+echo "SUPERSEDED: use pytest tests/test_minimal_deploy.py" >&2
+exit 0
+# --- архив ниже (не исполняется) ---
 # Изолированная регрессия SAFE_DEPLOY BL7/BL8/BL9/4c (без записи в live box).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,6 +12,9 @@ import minimal_deploy as md  # noqa: E402
 
 
 def main() -> None:
+    head = subprocess.check_output(
+        ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True
+    ).strip()
     files: dict[str, str] = {}
     for rel in md.PACKAGE_CRITICAL:
         p = ROOT / rel
@@ -21,7 +25,8 @@ def main() -> None:
             raise SystemExit(f"CR in {rel}: normalize to LF before pinning")
         files[rel] = md.sha256_bytes(data)
     out = {
-        "note": "EXTERNAL pin for assignment — pass via --expect-json outside PKG",
+        "note": "EXTERNAL pin for assignment — pass via --expect-json OUTSIDE PKG",
+        "expect_head": head,
         "files": files,
     }
     dest = ROOT / "tests/fixtures/minimal_deploy_external_pin.json"
@@ -29,6 +34,7 @@ def main() -> None:
         (json.dumps(out, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     )
     print("wrote", dest)
+    print("expect_head", head)
     for k, v in files.items():
         print(k, v[:16])
 

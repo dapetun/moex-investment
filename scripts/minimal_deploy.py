@@ -3,8 +3,8 @@
 Один оркестратор: verify-package → phase-a → (platform create вне процесса) →
 phase-b → verify-after → rollback при сбое.
 
-Не доверяет pin внутри архива: ожидаемые хэши передаются снаружи (задание).
-Не трогает live само по себе без явных путей в config. Platform create/delete —
+Не доверяет pin внутри архива: ожидаемые хэши и EXPECT_HEAD передаются
+снаружи (текст задания Permission A / handoff). Platform create/delete —
 внешние колбэки (Регулятор); в тестах — mock.
 """
 
@@ -15,12 +15,13 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-# Фиксированный импорт соседнего модуля по пути файла (не sys.path из env).
 _SCRIPTS = Path(__file__).resolve().parent
 _GUARDS_PATH = _SCRIPTS / "safe_deploy_guards.py"
+_g = None  # ленивая загрузка после verify (N-7)
 
 
 def _load_guards():
@@ -37,9 +38,14 @@ def _load_guards():
     return mod
 
 
-g = _load_guards()
+def g():
+    """Guards-модуль (лениво)."""
+    global _g
+    if _g is None:
+        _g = _load_guards()
+    return _g
 
-# Относительные ключи критических файлов пакета (пути от корня репо/пакета).
+
 PACKAGE_CRITICAL = (
     "scripts/minimal_deploy.py",
     "scripts/safe_deploy_guards.py",
@@ -74,7 +80,35 @@ def refuse_untrusted_pyc(root: Path) -> None:
             raise SystemExit(f"untrusted bytecode present: {p}")
 
 
-def verify_package(pkg_root: Path, expect_hashes: dict[str, str]) -> None:
+def load_expect_json(path: Path, *, pkg_root: Path | None = None) -> dict:
+    """Загрузить внешний pin. Отказ, если файл лежит внутри PKG (N-4)."""
+    path = path.resolve()
+    if pkg_root is not None:
+        pkg = pkg_root.resolve()
+        try:
+            path.relative_to(pkg)
+            raise SystemExit(
+                f"expect-json must be outside package root: {path} under {pkg}"
+            )
+        except ValueError:
+            pass
+    blob = json.loads(path.read_text(encoding="utf-8"))
+    files = blob.get("files") or {}
+    if not isinstance(files, dict) or not files:
+        raise SystemExit("expect-json missing files map")
+    return {
+        "expect_head": blob.get("expect_head") or blob.get("EXPECT_HEAD") or "",
+        "files": {str(k): str(v) for k, v in files.items()},
+    }
+
+
+def verify_package(
+    pkg_root: Path,
+    expect_hashes: dict[str, str],
+    *,
+    expect_head: str = "",
+    archive_commit_id: str = "",
+) -> None:
     """Сверить критические файлы пакета с внешними expect_hashes (из задания)."""
     pkg_root = pkg_root.resolve()
     if not pkg_root.is_dir():
@@ -92,6 +126,16 @@ def verify_package(pkg_root: Path, expect_hashes: dict[str, str]) -> None:
         got = sha256_file(path, refuse_cr=True)
         if got != want:
             raise SystemExit(f"hash mismatch {rel}: got {got} want {want}")
+    if expect_head:
+        if len(expect_head) < 7:
+            raise SystemExit("expect_head too short")
+        if archive_commit_id and not archive_commit_id.startswith(expect_head[:7]):
+            if archive_commit_id != expect_head and not expect_head.startswith(
+                archive_commit_id
+            ):
+                raise SystemExit(
+                    f"archive commit {archive_commit_id!r} != expect_head {expect_head!r}"
+                )
 
 
 def parse_baseline_table(audit_md: str) -> dict[str, str]:
@@ -106,8 +150,37 @@ def parse_baseline_table(audit_md: str) -> dict[str, str]:
     return out
 
 
+def map_audit_baseline_to_paths(
+    audit_names: dict[str, str],
+    *,
+    profile: Path,
+    opt: Path,
+    pos: Path,
+    qc: Path,
+    optimizer_yaml: Path,
+    spec: Path,
+) -> dict[str, str]:
+    """Имена AUDIT_BASELINE → абсолютные пути (fail-closed при дыре)."""
+    key_map = {
+        "profile.json": profile,
+        "OPT SKILL.md (`skill-1791618014068`)": opt,
+        "POS SKILL.md (`skill-1791618006478`)": pos,
+        "QC SKILL.md (`skill-1791617999761`)": qc,
+        "optimizer.yaml": optimizer_yaml,
+        "analysis_spec.md": spec,
+    }
+    out: dict[str, str] = {}
+    for name, path in key_map.items():
+        if name not in audit_names:
+            raise SystemExit(f"AUDIT_BASELINE missing key: {name}")
+        out[str(path.resolve())] = audit_names[name]
+    return out
+
+
 def check_baseline(path_to_expected_sha: dict[str, str]) -> None:
-    """Fail-closed: каждый путь существует и sha совпадает."""
+    """Fail-closed: каждый путь существует и sha совпадает. Пустой → отказ (N-6)."""
+    if not path_to_expected_sha:
+        raise SystemExit("empty baseline refused")
     for raw, want in path_to_expected_sha.items():
         p = Path(raw)
         if not p.is_file():
@@ -117,17 +190,19 @@ def check_baseline(path_to_expected_sha: dict[str, str]) -> None:
             raise SystemExit(f"baseline drift: {raw}: got {got} want {want}")
 
 
-def check_optimizer_disabled(optimizer_yaml: Path) -> None:
-    text = optimizer_yaml.read_text(encoding="utf-8")
-    if "enabled: true" in text.replace(" ", ""):
-        # допускаем "enabled: true" только как false
-        pass
-    # простой разбор: строка enabled
-    enabled = None
-    for line in text.splitlines():
-        s = line.strip()
-        if s.startswith("enabled:"):
-            enabled = s.split(":", 1)[1].strip().lower()
+def check_optimizer_disabled(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    top = [
+        ln.strip()
+        for ln in text.splitlines()
+        if ln.strip() and not ln.startswith(" ") and not ln.startswith("\t")
+    ]
+    enabled_lines = [ln for ln in top if ln.startswith("enabled:")]
+    if len(enabled_lines) != 1:
+        raise SystemExit(
+            f"optimizer.yaml must have exactly one top-level enabled:, got {enabled_lines!r}"
+        )
+    enabled = enabled_lines[0].split(":", 1)[1].strip().lower()
     if enabled != "false":
         raise SystemExit(f"optimizer.yaml enabled must be false, got {enabled!r}")
 
@@ -138,11 +213,28 @@ def check_no_cli_skill(workflows_dir: Path) -> None:
         raise SystemExit(f"workflows missing: {workflows_dir}")
     for skill_md in workflows_dir.glob("*/SKILL.md"):
         try:
-            fields, _ = g.split_skill_md(skill_md.read_text(encoding="utf-8"))
+            fields, _ = g().split_skill_md(skill_md.read_text(encoding="utf-8"))
         except SystemExit:
             continue
-        if fields.get("name") == SKILL_NAME:
+        name = (fields.get("name") or "").strip().lower().replace(" ", "")
+        if name == SKILL_NAME.lower():
             raise SystemExit(f"cli-analyst-bundle already registered at {skill_md.parent}")
+
+
+def collect_tree_files(*roots: Path) -> list[str]:
+    """Все обычные файлы под корнями (N-2: расширенный MANIFEST)."""
+    out: list[str] = []
+    for root in roots:
+        root = root.resolve()
+        if not root.exists():
+            raise SystemExit(f"tree root missing: {root}")
+        if root.is_file():
+            out.append(str(root))
+            continue
+        for p in sorted(root.rglob("*")):
+            if p.is_file() and not p.is_symlink():
+                out.append(str(p.resolve()))
+    return out
 
 
 def write_manifest(paths: list[str], out: Path) -> dict[str, str]:
@@ -153,7 +245,7 @@ def write_manifest(paths: list[str], out: Path) -> dict[str, str]:
         p = Path(raw)
         if not p.exists():
             raise SystemExit(f"manifest path missing: {raw}")
-        canon = g.canonicalize_path(str(p))
+        canon = g().canonicalize_path(str(p))
         h = sha256_file(Path(canon))
         rows[canon] = h
         lines.append(f"{h}  {canon}")
@@ -166,7 +258,7 @@ def write_manifest(paths: list[str], out: Path) -> dict[str, str]:
 
 def backup_files(paths: list[str], bk_dir: Path) -> None:
     bk_dir.mkdir(parents=True, exist_ok=True)
-    mapping: dict[str, str] = {}
+    mapping: dict[str, dict[str, str]] = {}
     for i, raw in enumerate(paths):
         src = Path(raw)
         if not src.is_file():
@@ -174,22 +266,57 @@ def backup_files(paths: list[str], bk_dir: Path) -> None:
         dest_name = f"{i:02d}_{src.name}"
         dest = bk_dir / dest_name
         shutil.copy2(src, dest)
-        mapping[g.canonicalize_path(str(src))] = dest_name
+        h = sha256_file(src)
+        if h != sha256_file(dest):
+            raise SystemExit(f"backup integrity fail: {raw}")
+        mapping[g().canonicalize_path(str(src))] = {"file": dest_name, "sha256": h}
     (bk_dir / "BACKUP_MAP.json").write_text(
         json.dumps(mapping, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    for canon, name in mapping.items():
-        if sha256_file(Path(canon)) != sha256_file(bk_dir / name):
-            raise SystemExit(f"backup integrity fail: {canon}")
 
 
-def restore_backup(bk_dir: Path) -> None:
+def restore_backup(bk_dir: Path, *, manifest_before: dict[str, str] | None = None) -> None:
+    """Атомарный restore: проверить все члены, затем tmp+replace, затем сверка (N-3)."""
     mapping = json.loads((bk_dir / "BACKUP_MAP.json").read_text(encoding="utf-8"))
-    for canon, name in mapping.items():
+    # 1) preflight: все члены на месте и sha совпадает с картой
+    for canon, meta in mapping.items():
+        if isinstance(meta, str):
+            name, want = meta, None
+        else:
+            name, want = meta["file"], meta.get("sha256")
         src = bk_dir / name
         if not src.is_file():
             raise SystemExit(f"backup member missing: {name}")
-        shutil.copy2(src, canon)
+        got = sha256_file(src)
+        if want and got != want:
+            raise SystemExit(f"backup member corrupted: {name}")
+    # 2) copy via tmp + replace
+    for canon, meta in mapping.items():
+        name = meta if isinstance(meta, str) else meta["file"]
+        src = bk_dir / name
+        dest = Path(canon)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(dest.parent), prefix=".md_restore_", suffix=".tmp"
+        )
+        os.close(fd)
+        tmp = Path(tmp_name)
+        try:
+            shutil.copy2(src, tmp)
+            os.replace(tmp, dest)
+        finally:
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
+    # 3) verify against MANIFEST_BEFORE
+    if manifest_before is None and (bk_dir.parent / "MANIFEST_BEFORE.txt").is_file():
+        manifest_before = g().load_manifest(bk_dir.parent / "MANIFEST_BEFORE.txt")
+    if manifest_before:
+        for canon, want in manifest_before.items():
+            if canon not in mapping:
+                continue
+            got = sha256_file(Path(canon))
+            if got != want:
+                raise SystemExit(f"restore verify fail: {canon}")
 
 
 def allowlist_paths(
@@ -218,16 +345,14 @@ def verify_manifest_allowlist(
     new_skill_path: str | None = None,
 ) -> None:
     """Изменения только в allowlist (+ опционально новый skill path)."""
-    allow = {g.canonicalize_path(p) for p in allowlist}
+    allow = {g().canonicalize_path(p) for p in allowlist}
     if new_skill_path:
-        allow.add(g.canonicalize_path(new_skill_path))
-    # unchanged outside allow
+        allow.add(g().canonicalize_path(new_skill_path))
     for path, h in before.items():
         if path in allow:
             continue
         if after.get(path) != h:
             raise SystemExit(f"unauthorized change outside allowlist: {path}")
-    # after keys that differ or are new must be in allow
     for path, h in after.items():
         if before.get(path) == h:
             continue
@@ -235,14 +360,35 @@ def verify_manifest_allowlist(
             raise SystemExit(f"new/changed path not in allowlist: {path}")
 
 
-def apply_file_writes(writes: dict[str, str], allowlist: list[str]) -> None:
-    """Записать содержимое только в allowlist-пути (fail-closed)."""
-    allow = {g.canonicalize_path(p) for p in allowlist}
+def apply_file_writes(
+    writes: dict[str, str],
+    allowlist: list[str],
+    *,
+    expected_after_sha: dict[str, str] | None = None,
+) -> None:
+    """Записать содержимое только в allowlist-пути; сверить sha «после» (N-6)."""
+    allow = {g().canonicalize_path(p) for p in allowlist}
+    exp: dict[str, str] | None = None
+    if expected_after_sha is not None:
+        exp = {g().canonicalize_path(k): v for k, v in expected_after_sha.items()}
+        for raw in writes:
+            if g().canonicalize_path(raw) not in exp:
+                raise SystemExit(f"missing expected_after_sha for {raw}")
     for raw, content in writes.items():
-        canon = g.canonicalize_path(raw)
+        canon = g().canonicalize_path(raw)
         if canon not in allow:
             raise SystemExit(f"write refused (not in allowlist): {canon}")
+        if canon.endswith("profile.json") or Path(canon).name == "profile.json":
+            try:
+                json.loads(content)
+            except json.JSONDecodeError as e:
+                raise SystemExit(f"profile.json must be valid JSON: {e}") from e
         Path(canon).write_text(content, encoding="utf-8", newline="\n")
+        if exp is not None:
+            got = sha256_file(Path(canon))
+            want = exp[canon]
+            if got != want:
+                raise SystemExit(f"expected_after_sha mismatch {canon}: got {got} want {want}")
 
 
 def register_skill_path(
@@ -252,18 +398,14 @@ def register_skill_path(
     *,
     existed_before: set[str],
 ) -> str:
-    """path-check + отказ если путь был в MANIFEST_BEFORE."""
-    real = g.assert_path_in_skill_root(
+    """path-check + отказ если каталог/файлы skill уже были до create (N-5)."""
+    real = g().assert_path_in_skill_root(
         skill_path_raw, skill_root_logical, agent_data_logical=agent_data_logical
     )
-    canon = g.canonicalize_path(real)
-    if canon in existed_before or any(
-        canon == p or canon.startswith(p + os.sep) for p in existed_before
-    ):
-        # directory: if any before path equals or is under skill dir
-        for p in existed_before:
-            if p == canon or p.startswith(canon + os.sep) or canon.startswith(p + os.sep):
-                raise SystemExit("path existed before deploy — refuse")
+    canon = g().canonicalize_path(real)
+    # каталог skill уже содержал файлы из MANIFEST_BEFORE
+    if any(p == canon or p.startswith(canon + os.sep) for p in existed_before):
+        raise SystemExit("path existed before deploy — refuse")
     return real
 
 
@@ -275,15 +417,33 @@ def refuse_delete_foreign(op_skill_id: str, requested_id: str) -> None:
 
 
 def compare_registered_skill(repo_skill: Path, live_skill: Path) -> None:
-    g.compare_skill_md(
+    g().compare_skill_md(
         repo_skill.read_text(encoding="utf-8"),
         live_skill.read_text(encoding="utf-8"),
     )
 
 
-# --- Platform hooks (Регулятор); тесты подставляют mock ---
+def record_created_skill(bk: Path, skill_id: str, skill_path: str) -> None:
+    """Зафиксировать skill этой операции в BK (noclobber) — N-1."""
+    if not skill_id or not skill_path:
+        raise SystemExit("record_created_skill: empty id/path")
+    sid_f = bk / "skill_id.txt"
+    path_f = bk / "skill_path.txt"
+    if sid_f.exists() or path_f.exists():
+        raise SystemExit("skill_id/path already recorded (noclobber)")
+    sid_f.write_text(skill_id + "\n", encoding="utf-8")
+    path_f.write_text(skill_path + "\n", encoding="utf-8")
 
-PlatformCreate = Callable[[Path], tuple[str, str]]  # -> (skill_id, path)
+
+def load_recorded_skill(bk: Path) -> tuple[str, str]:
+    sid = (bk / "skill_id.txt").read_text(encoding="utf-8").strip()
+    path = (bk / "skill_path.txt").read_text(encoding="utf-8").strip()
+    if not sid or not path:
+        raise SystemExit("recorded skill_id/path empty")
+    return sid, path
+
+
+PlatformCreate = Callable[[Path], tuple[str, str]]
 PlatformDelete = Callable[[str, str], None]
 
 
@@ -296,22 +456,31 @@ def run_phase_a(
     workflows: Path,
     optimizer_yaml: Path,
     active_ops: list[str] | None = None,
+    tree_roots: list[Path] | None = None,
 ) -> dict:
     """Подготовка: anti-parallel, no skill, baseline, backup, MANIFEST_BEFORE."""
     if not deploy_op_id or deploy_op_id == "pa-1405":
         raise SystemExit("invalid deploy_op_id")
     if active_ops:
         raise SystemExit(f"active deploy ops present: {active_ops}")
+    if not baseline:
+        raise SystemExit("empty baseline refused")
     check_no_cli_skill(workflows)
     check_baseline(baseline)
     check_optimizer_disabled(optimizer_yaml)
     if bk.exists() and any(bk.iterdir()):
         raise SystemExit(f"BK not empty: {bk}")
     bk.mkdir(parents=True, exist_ok=True)
-    backup_files(tracked_paths, bk / "files")
+    # N-2: манифест по дереву, если переданы корни; иначе tracked_paths
+    if tree_roots:
+        tracked_paths = collect_tree_files(*tree_roots)
+    backup_targets = [p for p in tracked_paths if Path(p).is_file()]
+    # бэкапим только allowlist-пересечения + всё из baseline keys
+    backup_set = sorted(set(backup_targets) | set(baseline.keys()))
+    backup_files(backup_set, bk / "files")
     before = write_manifest(tracked_paths, bk / "MANIFEST_BEFORE.txt")
     (bk / "deploy_op_id.txt").write_text(deploy_op_id + "\n", encoding="utf-8")
-    return {"manifest_before": before, "bk": str(bk.resolve())}
+    return {"manifest_before": before, "bk": str(bk.resolve()), "tracked": tracked_paths}
 
 
 def run_phase_b_files(
@@ -323,10 +492,13 @@ def run_phase_b_files(
     optimizer_yaml: Path,
     optimizer_sha_before: str,
     new_skill_md_path: str | None = None,
+    expected_after_sha: dict[str, str] | None = None,
 ) -> dict:
     """Применить файловые патчи + MANIFEST_AFTER + allowlist + optimizer pin."""
-    before = g.load_manifest(bk / "MANIFEST_BEFORE.txt")
-    apply_file_writes(writes, allowlist)
+    if expected_after_sha is None:
+        raise SystemExit("expected_after_sha required (N-6)")
+    before = g().load_manifest(bk / "MANIFEST_BEFORE.txt")
+    apply_file_writes(writes, allowlist, expected_after_sha=expected_after_sha)
     paths_after = list(tracked_paths)
     if new_skill_md_path:
         paths_after.append(new_skill_md_path)
@@ -347,15 +519,31 @@ def run_phase_b_files(
 def run_rollback(
     *,
     bk: Path,
-    op_skill_id: str | None,
+    requested_skill_id: str | None,
     platform_delete: PlatformDelete | None,
-    skill_path: str | None,
 ) -> None:
-    """Сначала файлы, потом platform delete только своего skill."""
-    restore_backup(bk / "files")
-    if op_skill_id and platform_delete and skill_path:
-        refuse_delete_foreign(op_skill_id, op_skill_id)
-        platform_delete(op_skill_id, skill_path)
+    """Файлы из BK + delete только skill, записанного в BK (N-1, N-3)."""
+    errors: list[str] = []
+    # файловый контур
+    try:
+        restore_backup(bk / "files")
+    except SystemExit as e:
+        errors.append(f"files: {e}")
+    # delete-контур независим
+    sid_f = bk / "skill_id.txt"
+    if sid_f.is_file() and platform_delete:
+        try:
+            recorded_id, recorded_path = load_recorded_skill(bk)
+            if not requested_skill_id:
+                raise SystemExit("requested_skill_id required when skill was recorded")
+            refuse_delete_foreign(recorded_id, requested_skill_id)
+            platform_delete(recorded_id, recorded_path)
+        except SystemExit as e:
+            errors.append(f"delete: {e}")
+    elif requested_skill_id and platform_delete and not sid_f.is_file():
+        errors.append("delete: skill_id.txt missing — refuse delete without BK record")
+    if errors:
+        raise SystemExit("; ".join(errors))
 
 
 def main(argv: list[str]) -> int:
@@ -363,8 +551,11 @@ def main(argv: list[str]) -> int:
         print(
             "usage:\n"
             "  minimal_deploy.py hash-file PATH\n"
-            "  minimal_deploy.py verify-package PKG_ROOT --expect REL=HEX [...]\n"
-            "  minimal_deploy.py self-check\n",
+            "  minimal_deploy.py verify-package PKG_ROOT --expect-json PATH [--expect-head SHA]\n"
+            "  minimal_deploy.py self-check\n"
+            "  minimal_deploy.py phase-a --config JSON\n"
+            "  minimal_deploy.py phase-b --config JSON\n"
+            "  minimal_deploy.py rollback --config JSON\n",
             file=sys.stderr,
         )
         return 2
@@ -373,7 +564,6 @@ def main(argv: list[str]) -> int:
         print(sha256_file(Path(argv[2])))
         return 0
     if cmd == "self-check":
-        # оркестратор и guards на месте, без pyc рядом
         refuse_untrusted_pyc(_SCRIPTS)
         if not _GUARDS_PATH.is_file():
             raise SystemExit("guards missing")
@@ -382,6 +572,8 @@ def main(argv: list[str]) -> int:
     if cmd == "verify-package":
         pkg = Path(argv[2])
         expect: dict[str, str] = {}
+        expect_head = ""
+        archive_commit = ""
         i = 3
         while i < len(argv):
             if argv[i] == "--expect" and i + 1 < len(argv):
@@ -390,14 +582,69 @@ def main(argv: list[str]) -> int:
                 i += 2
                 continue
             if argv[i] == "--expect-json" and i + 1 < len(argv):
-                # внешний JSON (не из pkg): {"files": {"rel": "hex"}}
-                blob = json.loads(Path(argv[i + 1]).read_text(encoding="utf-8"))
-                expect.update(blob.get("files") or blob)
+                loaded = load_expect_json(Path(argv[i + 1]), pkg_root=pkg)
+                expect.update(loaded["files"])
+                expect_head = expect_head or loaded["expect_head"]
+                i += 2
+                continue
+            if argv[i] == "--expect-head" and i + 1 < len(argv):
+                expect_head = argv[i + 1]
+                i += 2
+                continue
+            if argv[i] == "--archive-commit" and i + 1 < len(argv):
+                archive_commit = argv[i + 1]
                 i += 2
                 continue
             raise SystemExit(f"bad arg {argv[i]}")
-        verify_package(pkg, expect)
+        verify_package(
+            pkg, expect, expect_head=expect_head, archive_commit_id=archive_commit
+        )
         print("package ok")
+        return 0
+    if cmd in {"phase-a", "phase-b", "rollback"}:
+        # явный JSON-конфиг без дефолтов на live (N-6)
+        if "--config" not in argv:
+            raise SystemExit(f"{cmd} requires --config JSON")
+        cfg_path = Path(argv[argv.index("--config") + 1])
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        if cmd == "phase-a":
+            run_phase_a(
+                deploy_op_id=cfg["deploy_op_id"],
+                bk=Path(cfg["bk"]),
+                baseline=cfg["baseline"],
+                tracked_paths=cfg.get("tracked_paths") or list(cfg["baseline"]),
+                workflows=Path(cfg["workflows"]),
+                optimizer_yaml=Path(cfg["optimizer_yaml"]),
+                active_ops=cfg.get("active_ops") or [],
+                tree_roots=[Path(p) for p in cfg["tree_roots"]]
+                if cfg.get("tree_roots")
+                else None,
+            )
+            print("phase-a ok")
+            return 0
+        if cmd == "phase-b":
+            run_phase_b_files(
+                bk=Path(cfg["bk"]),
+                writes=cfg["writes"],
+                allowlist=cfg["allowlist"],
+                tracked_paths=cfg["tracked_paths"],
+                optimizer_yaml=Path(cfg["optimizer_yaml"]),
+                optimizer_sha_before=cfg["optimizer_sha_before"],
+                new_skill_md_path=cfg.get("new_skill_md_path"),
+                expected_after_sha=cfg["expected_after_sha"],
+            )
+            print("phase-b ok")
+            return 0
+        # rollback — без platform_delete в CLI (колбэк только у Регулятора);
+        # CLI восстанавливает файлы и печатает recorded skill для delete
+        bk = Path(cfg["bk"])
+        restore_backup(bk / "files")
+        if (bk / "skill_id.txt").is_file():
+            sid, spath = load_recorded_skill(bk)
+            req = cfg.get("requested_skill_id") or sid
+            refuse_delete_foreign(sid, req)
+            print(f"ROLLBACK_DELETE_CANDIDATE id={sid} path={spath}")
+        print("rollback-files ok")
         return 0
     print(f"unknown {cmd}", file=sys.stderr)
     return 2

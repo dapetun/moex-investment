@@ -16,11 +16,11 @@
 | — (N46–N49) | cur-20261017-2045 | — | 1f109a8 | 2015 | rejected | N49 read_text CR; N47 fixture CRLF + comment-only expect. |
 | — (N47/N49 fix) | cur-20261017-2115 | — | 24e7770 | 2045 | rejected | N52 guards not pinned; N54 pytest read_text; N55 LF pad. |
 | — (N52–N55) | cur-20261017-2145 | — | 122def2 | 2115 | submitted | EXPECT_HEAD/GUARDS shell pin; raw sha; pytest raw read. |
-
 | — (N52-N55) | cur-20261017-2145 | — | 78ae4f7 | 2115 | rejected | N59 pyc; N58 later. |
 | — (N58-N60) | cur-20261017-2215 | — | a5a59ba | 2145 | rejected | N59 shadow pkg; N60 replace/fsmonitor. |
 | — (N59-N60b) | cur-20261017-2235 | — | ba1f23c | 2215 | rejected | F1–F8; owner chose вариант B (MINIMAL_DEPLOY). |
-| — (вариант B) | (pending review) | — | (tip after MINIMAL_DEPLOY) | 2235 | submitted | SAFE_DEPLOY superseded; `scripts/minimal_deploy.py` + external pin. **No live apply**. |
+| — (вариант B) | cur-20261017-2248 | 2c282612-01fb-4712-be7c-ab9559eacf7 | e5dbb62 | 2235 | rejected | Песочница REJECT N-1…N-6; F1–F8 closed under new model. |
+| — (N-1…N-6) | (pending) | — | (tip) | 2248 | submitted | Fix skill_id in BK, atomic restore, external HEAD pin, existed_before, CLI+expected_after_sha. **No live apply**. |
 
 ## Pin values — MINIMAL_DEPLOY (внешний pin задания)
 

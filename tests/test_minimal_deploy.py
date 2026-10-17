@@ -39,7 +39,6 @@ def box(tmp_path: Path) -> dict:
     agents = sand / "agents" / agent_id
     workflows.mkdir(parents=True)
     agents.mkdir(parents=True)
-    # existing skills
     for sid, body in [
         ("skill-1791618014068", "# OPT\nbaseline\n"),
         ("skill-1791618006478", "# POS\nbaseline\n"),
@@ -63,7 +62,6 @@ def box(tmp_path: Path) -> dict:
     agent_data = tmp_path / "agent-data"
     _link(agent_data, sand)
 
-    # package copy (critical subset) — всегда LF (как git archive на Linux)
     pkg = tmp_path / "pkg"
     for rel in md.PACKAGE_CRITICAL:
         src = ROOT / rel
@@ -74,12 +72,11 @@ def box(tmp_path: Path) -> dict:
         data = src.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
         dest.write_bytes(data)
 
-    skill_root_logical = agent_data / "workflows"
     return {
         "tmp": tmp_path,
         "sand": sand,
         "agent_data": agent_data,
-        "workflows": skill_root_logical,
+        "workflows": agent_data / "workflows",
         "workflows_real": workflows,
         "agent": agents,
         "invest": invest,
@@ -106,8 +103,9 @@ def _expect_hashes(pkg: Path) -> dict[str, str]:
     return out
 
 
-def _platform_store(box: dict) -> dict:
-    return {"created": None}
+def _sha_of(text: str) -> str:
+    return md.sha256_bytes(text.encode("utf-8"))
+
 
 def _make_create(box: dict, store: dict, *, fail: bool = False, weird_path: Path | None = None):
     def create(skill_md: Path) -> tuple[str, str]:
@@ -135,6 +133,18 @@ def _make_delete(store: dict):
     return delete
 
 
+def _writes_and_expected(box: dict) -> tuple[dict[str, str], dict[str, str]]:
+    writes = {
+        box["allow"][0]: "# OPT\npatched\n",
+        box["allow"][1]: "# POS\npatched\n",
+        box["allow"][2]: "# QC\npatched\n",
+        box["allow"][3]: json.dumps({"description": "patched"}, ensure_ascii=False),
+        box["allow"][4]: "# spec\npatched\n",
+    }
+    expected = {md.g().canonicalize_path(k): _sha_of(v) for k, v in writes.items()}
+    return writes, expected
+
+
 def test_verify_package_ok_and_rejects_bad_hash(box: dict) -> None:
     expect = _expect_hashes(box["pkg"])
     md.verify_package(box["pkg"], expect)
@@ -157,6 +167,29 @@ def test_verify_package_rejects_pyc(box: dict) -> None:
         md.verify_package(box["pkg"], _expect_hashes(box["pkg"]))
 
 
+def test_verify_rejects_expect_json_inside_pkg(box: dict) -> None:
+    pin = box["pkg"] / "pin.json"
+    pin.write_text(
+        json.dumps({"files": _expect_hashes(box["pkg"])}),
+        encoding="utf-8",
+        newline="\n",
+    )
+    with pytest.raises(SystemExit, match="outside package"):
+        md.load_expect_json(pin, pkg_root=box["pkg"])
+
+
+def test_empty_baseline_refused(box: dict) -> None:
+    with pytest.raises(SystemExit, match="empty baseline"):
+        md.run_phase_a(
+            deploy_op_id="pa-20261017-2399",
+            bk=box["tmp"] / "bk_empty",
+            baseline={},
+            tracked_paths=box["allow"],
+            workflows=box["workflows_real"],
+            optimizer_yaml=box["opt_yaml"],
+        )
+
+
 def test_full_success_and_analyst_skill_visible(box: dict) -> None:
     md.verify_package(box["pkg"], _expect_hashes(box["pkg"]))
     bk = box["tmp"] / "bk"
@@ -170,45 +203,40 @@ def test_full_success_and_analyst_skill_visible(box: dict) -> None:
         workflows=box["workflows_real"],
         optimizer_yaml=box["opt_yaml"],
         active_ops=[],
+        tree_roots=[box["workflows_real"], box["agent"], box["invest"]],
     )
     store: dict = {}
     create = _make_create(box, store)
     skill_src = box["pkg"] / "docs/analyst_skill_patch/cli-analyst-bundle/SKILL.md"
-    # ensure SKILL has proper frontmatter for compare
     if not skill_src.read_text(encoding="utf-8").startswith("---"):
         skill_src.write_text(
             "---\nname: cli-analyst-bundle\ndescription: demo\n---\n# body\n",
             encoding="utf-8",
             newline="\n",
         )
-        # refresh pin not needed for this unit path after mutate — re-copy compare uses live
     sid, spath = create(skill_src)
+    md.record_created_skill(bk, sid, spath)
     live_md = Path(spath) / "SKILL.md"
-    before_paths = set(md.g.load_manifest(bk / "MANIFEST_BEFORE.txt"))
-    real = md.register_skill_path(
+    before_paths = set(md.g().load_manifest(bk / "MANIFEST_BEFORE.txt"))
+    md.register_skill_path(
         spath,
         str(box["workflows"]),
         str(box["agent_data"]),
         existed_before=before_paths,
     )
     md.compare_registered_skill(skill_src, live_md)
-    writes = {
-        box["allow"][0]: "# OPT\npatched\n",
-        box["allow"][1]: "# POS\npatched\n",
-        box["allow"][2]: "# QC\npatched\n",
-        box["allow"][3]: json.dumps({"description": "patched"}, ensure_ascii=False),
-        box["allow"][4]: "# spec\npatched\n",
-    }
+    writes, expected = _writes_and_expected(box)
+    tracked = list(md.g().load_manifest(bk / "MANIFEST_BEFORE.txt"))
     md.run_phase_b_files(
         bk=bk,
         writes=writes,
         allowlist=box["allow"],
-        tracked_paths=box["allow"],
+        tracked_paths=tracked,
         optimizer_yaml=box["opt_yaml"],
         optimizer_sha_before=opt_sha,
         new_skill_md_path=str(live_md.resolve()),
+        expected_after_sha=expected,
     )
-    # skill visible under workflows
     assert (box["workflows_real"] / sid / "SKILL.md").is_file()
     assert md.sha256_file(box["opt_yaml"]) == opt_sha
 
@@ -256,14 +284,12 @@ def test_platform_create_fail_no_file_changes(box: dict) -> None:
     create = _make_create(box, store, fail=True)
     with pytest.raises(SystemExit, match="platform create"):
         create(box["pkg"] / "docs/analyst_skill_patch/cli-analyst-bundle/SKILL.md")
-    # files unchanged vs baseline
     for p, h in base.items():
         assert md.sha256_file(Path(p)) == h
     assert md.sha256_file(box["opt_yaml"]) == opt_sha
 
 
 def test_symlink_skill_root_accepted(box: dict) -> None:
-    """agent-data → sand-data: path-check принимает путь под logical workflows."""
     store: dict = {}
     create = _make_create(box, store)
     skill_src = box["pkg"] / "docs/analyst_skill_patch/cli-analyst-bundle/SKILL.md"
@@ -272,7 +298,7 @@ def test_symlink_skill_root_accepted(box: dict) -> None:
         encoding="utf-8",
         newline="\n",
     )
-    sid, spath = create(skill_src)
+    _sid, spath = create(skill_src)
     real = md.register_skill_path(
         spath,
         str(box["workflows"]),
@@ -304,16 +330,26 @@ def test_patch_failure_triggers_rollback(box: dict) -> None:
         newline="\n",
     )
     sid, spath = create(skill_src)
-    live_md = str((Path(spath) / "SKILL.md").resolve())
-    # partial write then fail on unauthorized path
-    md.apply_file_writes({box["allow"][0]: "# OPT\npartial\n"}, box["allow"])
+    md.record_created_skill(bk, sid, spath)
+    md.apply_file_writes(
+        {box["allow"][0]: "# OPT\npartial\n"},
+        box["allow"],
+        expected_after_sha={
+            md.g().canonicalize_path(box["allow"][0]): _sha_of("# OPT\npartial\n")
+        },
+    )
     with pytest.raises(SystemExit, match="allowlist"):
-        md.apply_file_writes({str(box["opt_yaml"]): "enabled: true\n"}, box["allow"])
+        md.apply_file_writes(
+            {str(box["opt_yaml"]): "enabled: true\n"},
+            box["allow"],
+            expected_after_sha={
+                md.g().canonicalize_path(str(box["opt_yaml"])): _sha_of("enabled: true\n")
+            },
+        )
     md.run_rollback(
         bk=bk,
-        op_skill_id=sid,
+        requested_skill_id=sid,
         platform_delete=_make_delete(store),
-        skill_path=spath,
     )
     assert md.sha256_file(Path(box["allow"][0])) == base[box["allow"][0]]
     assert store["created"] is None
@@ -321,12 +357,74 @@ def test_patch_failure_triggers_rollback(box: dict) -> None:
     assert not (box["workflows_real"] / sid).exists()
 
 
+def test_rollback_refuses_foreign_skill_id(box: dict) -> None:
+    """N-1: опечатка requested id ≠ BK → delete не вызывается."""
+    bk = box["tmp"] / "bk_foreign"
+    base = _baseline(box)
+    md.run_phase_a(
+        deploy_op_id="pa-20261017-2310",
+        bk=bk,
+        baseline=base,
+        tracked_paths=box["allow"],
+        workflows=box["workflows_real"],
+        optimizer_yaml=box["opt_yaml"],
+    )
+    store: dict = {"created": ("skill-OWN", str(box["workflows_real"] / "skill-OWN"))}
+    md.record_created_skill(bk, "skill-OWN", store["created"][1])
+    deleted: list[str] = []
+
+    def delete(sid: str, path: str) -> None:
+        deleted.append(sid)
+
+    with pytest.raises(SystemExit, match="foreign|delete"):
+        md.run_rollback(
+            bk=bk,
+            requested_skill_id="skill-FOREIGN",
+            platform_delete=delete,
+        )
+    assert deleted == []
+
+
+def test_register_refuses_preexisting_skill_dir(box: dict) -> None:
+    """N-5: каталог OPT уже в MANIFEST_BEFORE → refuse."""
+    before = {md.g().canonicalize_path(box["allow"][0])}
+    with pytest.raises(SystemExit, match="existed before"):
+        md.register_skill_path(
+            str(box["workflows_real"] / "skill-1791618014068"),
+            str(box["workflows"]),
+            str(box["agent_data"]),
+            existed_before=before,
+        )
+
+
+def test_restore_preflight_missing_member(box: dict) -> None:
+    """N-3: нет члена BK → restore не применяет частичный набор."""
+    bk = box["tmp"] / "bk_restore"
+    base = _baseline(box)
+    md.run_phase_a(
+        deploy_op_id="pa-20261017-2311",
+        bk=bk,
+        baseline=base,
+        tracked_paths=box["allow"],
+        workflows=box["workflows_real"],
+        optimizer_yaml=box["opt_yaml"],
+    )
+    Path(box["allow"][0]).write_text("# OPT\nchanged\n", encoding="utf-8", newline="\n")
+    members = list((bk / "files").glob("0*_*"))
+    members[0].unlink()
+    with pytest.raises(SystemExit, match="backup member missing"):
+        md.restore_backup(bk / "files")
+    # файл остался изменённым (restore не начался)
+    assert "changed" in Path(box["allow"][0]).read_text(encoding="utf-8")
+
+
 def test_refuse_delete_foreign_skill(box: dict) -> None:
     with pytest.raises(SystemExit, match="foreign"):
         md.refuse_delete_foreign("skill-AAA", "skill-BBB")
 
 
-def test_manifest_detects_extra_file(box: dict) -> None:
+def test_manifest_tree_detects_extra_file(box: dict) -> None:
+    """N-2: EXTRA вне allowlist виден в tree-manifest."""
     bk = box["tmp"] / "bk5"
     base = _baseline(box)
     md.run_phase_a(
@@ -336,13 +434,13 @@ def test_manifest_detects_extra_file(box: dict) -> None:
         tracked_paths=box["allow"],
         workflows=box["workflows_real"],
         optimizer_yaml=box["opt_yaml"],
+        tree_roots=[box["workflows_real"], box["agent"], box["invest"]],
     )
-    before = md.g.load_manifest(bk / "MANIFEST_BEFORE.txt")
-    # sneak change outside allowlist
+    before = md.g().load_manifest(bk / "MANIFEST_BEFORE.txt")
     outsider = box["sand"] / "workflows" / "skill-1791618014068" / "EXTRA.txt"
-    outsider.write_text("x\n", encoding="utf-8")
-    after = dict(before)
-    after[md.g.canonicalize_path(str(outsider))] = md.sha256_file(outsider)
+    outsider.write_text("x\n", encoding="utf-8", newline="\n")
+    after_paths = md.collect_tree_files(box["workflows_real"], box["agent"], box["invest"])
+    after = {md.g().canonicalize_path(p): md.sha256_file(Path(p)) for p in after_paths}
     with pytest.raises(SystemExit, match="allowlist"):
         md.verify_manifest_allowlist(before, after, box["allow"])
 
@@ -377,6 +475,15 @@ def test_unexpected_skill_id_path_still_path_checked(box: dict) -> None:
         spath, str(box["workflows"]), str(box["agent_data"]), existed_before=set()
     )
     assert Path(real).exists()
+
+
+def test_profile_must_be_json(box: dict) -> None:
+    with pytest.raises(SystemExit, match="JSON"):
+        md.apply_file_writes(
+            {box["allow"][3]: "NOT JSON"},
+            box["allow"],
+            expected_after_sha={md.g().canonicalize_path(box["allow"][3]): _sha_of("NOT JSON")},
+        )
 
 
 def test_exit_nonzero_on_hash_mismatch_cli(box: dict) -> None:

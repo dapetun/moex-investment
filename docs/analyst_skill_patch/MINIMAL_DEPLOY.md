@@ -28,11 +28,14 @@
 
 ## Доверенный пакет
 
-1. Получить архив commit `EXPECT_HEAD` (например `git archive EXPECT_HEAD`).
+1. Получить архив commit `EXPECT_HEAD` (`GIT_NO_REPLACE_OBJECTS=1 git archive EXPECT_HEAD`).
 2. Распаковать в чистый каталог `PKG` (без чужого `.git`).
-3. Снаружи (задание) передать `expect_hashes` для `PACKAGE_CRITICAL`.
-4. `python3 -I -B PKG/scripts/minimal_deploy.py verify-package PKG --expect-json /path/from/assignment.json`
-5. Дальше исполнять **только** `PKG/scripts/minimal_deploy.py` (и guards внутри него через compile байт).
+3. **Внешний pin** (текст задания Permission A / handoff Регулятора, не из PKG):
+   `expect_head` + sha256 всех `PACKAGE_CRITICAL` (см. `tests/fixtures/minimal_deploy_external_pin.json` как образец формата).
+4. Сверить `git get-tar-commit-id` архива с `expect_head`.
+5. `python3 -I -B PKG/scripts/minimal_deploy.py verify-package PKG --expect-json /path/OUTSIDE/pkg/pin.json --expect-head <SHA> --archive-commit <tar-commit-id>`
+   (`--expect-json` **внутри** PKG → отказ.)
+6. Дальше исполнять **только** `PKG/scripts/minimal_deploy.py` (guards — ленивый compile байт после verify).
 
 Не исполнять произвольный checkout на box. Не полагаться на `GIT_*` / hooks.
 
@@ -49,7 +52,8 @@ backup allowlist files → BK/files + BACKUP_MAP.json
 MANIFEST_BEFORE (noclobber)
 ```
 
-Команды: API `run_phase_a` в `scripts/minimal_deploy.py` (или CLI-обёртка later).
+Команды: `python3 -I -B …/minimal_deploy.py phase-a --config /path/phase-a.json`  
+(явные пути, без дефолтов на live). После platform create: `record_created_skill` → `skill_id.txt`/`skill_path.txt` в BK.
 
 ## Фаза B — изменение
 
@@ -63,9 +67,10 @@ MANIFEST_BEFORE (noclobber)
 
 ## Rollback
 
-1. `restore_backup(BK/files)`.
-2. Регулятор: platform delete **только** `skill_id` этой операции (`refuse_delete_foreign`).
-3. Не `rm -rf`.
+1. `restore_backup`: preflight всех членов BK → tmp+`os.replace` → сверка с `MANIFEST_BEFORE`.
+2. Delete: сравнить `requested_skill_id` с `BK/skill_id.txt`; путь только из `BK/skill_path.txt`.
+3. Файловый и delete-контуры независимы (оба отрабатывают с отчётом об ошибках).
+4. Не `rm -rf`.
 
 ## Allowlist (логические пути)
 
