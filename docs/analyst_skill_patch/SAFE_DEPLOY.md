@@ -78,12 +78,25 @@ BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
 ```bash
 set -euo pipefail
 REPO_ROOT="${REPO_ROOT:?}"
-# N47: эталон из ledger § Pin values — передавать явно каждому исполнителю (не из SD).
-EXPECT_DOC="${EXPECT_DOC:?set document_sha256 from ops/ledger.md Pin values}"
-EXPECT_FIX="${EXPECT_FIX:?set fixture sha256 from ops/ledger.md Pin values}"
+# N47/N52/N53: эталон ТОЛЬКО из задания Permission A (не из checkout/ledger).
+# Исполнять этот блок дословно из задания; SD — справочник под pin.
+EXPECT_HEAD="${EXPECT_HEAD:?set tip SHA from Permission A assignment}"
+EXPECT_DOC="${EXPECT_DOC:?set document_sha256 from Permission A assignment}"
+EXPECT_FIX="${EXPECT_FIX:?set fixture sha256 from Permission A assignment}"
+EXPECT_GUARDS="${EXPECT_GUARDS:?set safe_deploy_guards.py sha256 from Permission A assignment}"
 SD="$REPO_ROOT/docs/analyst_skill_patch/SAFE_DEPLOY.md"
 FIX="$REPO_ROOT/tests/fixtures/safe_deploy_block_hashes.json"
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" check-hashes "$SD" "$FIX" \
+GUARDS="$REPO_ROOT/scripts/safe_deploy_guards.py"
+# До любого python из репо: shell-сверка байт (обход пропатченного guards → отказ).
+[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" = "$EXPECT_HEAD" ] || exit 1
+[ -z "$(git -C "$REPO_ROOT" status --porcelain)" ] || exit 1
+DOC_GOT=$(sha256sum "$SD" | awk '{print $1}')
+FIX_GOT=$(sha256sum "$FIX" | awk '{print $1}')
+GUARDS_GOT=$(sha256sum "$GUARDS" | awk '{print $1}')
+[ "$DOC_GOT" = "$EXPECT_DOC" ] || exit 1
+[ "$FIX_GOT" = "$EXPECT_FIX" ] || exit 1
+[ "$GUARDS_GOT" = "$EXPECT_GUARDS" ] || exit 1
+python3 "$GUARDS" check-hashes "$SD" "$FIX" \
   --expect-document "$EXPECT_DOC" --expect-fixture "$EXPECT_FIX" || exit 1
 # Не перегенерировать fixture во время deploy.
 ```

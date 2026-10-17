@@ -382,7 +382,8 @@ import os, sys
 root = Path(os.environ["ROOT"])
 sys.path.insert(0, str(root / "scripts"))
 import safe_deploy_guards as g
-md = (root / "docs/analyst_skill_patch/SAFE_DEPLOY.md").read_text(encoding="utf-8")
+from safe_deploy_guards import read_text_no_universal_newlines as _r
+md = _r(root / "docs/analyst_skill_patch/SAFE_DEPLOY.md")
 step2 = next(b for b in g.extract_bash_steps(md) if "BEFORE_MARKER" in b)
 pre = step2.split("touch")[0]
 pre = pre.replace("python3 ", os.environ["PY_FOR_SD"] + " ")
@@ -411,7 +412,8 @@ import os, re, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(os.environ["ROOT"]) / "scripts"))
 import safe_deploy_guards as g
-md = (Path(os.environ["ROOT"]) / "docs/analyst_skill_patch/SAFE_DEPLOY.md").read_text(encoding="utf-8")
+from safe_deploy_guards import read_text_no_universal_newlines as _r
+md = _r(Path(os.environ["ROOT"]) / "docs/analyst_skill_patch/SAFE_DEPLOY.md")
 g.assert_safe_deploy_integrity(md)
 blocks = g.extract_bash_steps(md)
 step4b = next(b for b in blocks if "4b ok" in b)

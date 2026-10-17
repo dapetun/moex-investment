@@ -14,11 +14,14 @@
 | — (N39 hashes) | cur-20261015-1745 | — | a813540 | 1730 | rejected | Pin 9 blocks; REJECT A1–A18 вне pin (result a813540). |
 | — (N39 doc pin) | cur-20261017-2015 | — | efd5d7e | 1745 | accepted_notes | document+fences pin; ACCEPT WITH NOTES N46–N49. |
 | — (N46–N49) | cur-20261017-2045 | — | 1f109a8 | 2015 | rejected | N49 read_text CR; N47 fixture CRLF + comment-only expect. |
-| — (N47/N49 fix) | cur-20261017-2115 | — | (tip) | 2045 | submitted | raw-bytes read; EXPECT_DOC/FIX; .gitattributes eol=lf. |
+| — (N47/N49 fix) | cur-20261017-2115 | — | 24e7770 | 2045 | rejected | N52 guards not pinned; N54 pytest read_text; N55 LF pad. |
+| — (N52–N55) | cur-20261017-2145 | — | (tip) | 2115 | submitted | EXPECT_HEAD/GUARDS shell pin; raw sha; pytest raw read. |
 
-## Pin values (N47)
+## Pin values (N47) — источник: задание Permission A (не checkout)
 
-Сверять до Permission A apply; передавать как EXPECT_DOC / EXPECT_FIX каждому исполнителю:
+Передавать каждому исполнителю явно:
 
-- SAFE_DEPLOY.md document_sha256: d27360604cdf77a8356d6658b8a15b34affe53441c15f5bf865979bc70c336db
-- tests/fixtures/safe_deploy_block_hashes.json sha256: 736e9b7b774f0a96ca81afb3945a6cdfa2a7bd4d94257361992238fa6c95dca7
+- EXPECT_HEAD: tip SHA после merge этого коммита
+- EXPECT_DOC (SAFE_DEPLOY.md): 35d55bd8dee081a4126d7f60a3283f30ee8df3cf2c92023cc86d9cf27ada57c5
+- EXPECT_FIX (safe_deploy_block_hashes.json): 8366cc3ac1a3998b7f54d42bf1d1834b046e75482c06e40fee807b1bfd92fc6b
+- EXPECT_GUARDS (safe_deploy_guards.py): 18dcc687673b001cdda0d07f7606e9cc43445c09abc6168051175a367fe5a146

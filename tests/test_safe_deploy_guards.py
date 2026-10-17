@@ -16,6 +16,12 @@ SCRIPT = ROOT / "scripts" / "safe_deploy_guards.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 import safe_deploy_guards as g  # noqa: E402
 
+_SD = ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md"
+
+
+def _sd_text() -> str:
+    return g.read_text_no_universal_newlines(_SD)
+
 
 def _dir_link(link: Path, target: Path) -> None:
     """Создать symlink или Windows junction (без прав на symlink)."""
@@ -291,8 +297,7 @@ def test_validate_env_ok(symlink_box: dict[str, Path], tmp_path: Path) -> None:
 
 
 def test_n39_extract_safe_deploy_steps() -> None:
-    md = ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md"
-    blocks = g.extract_bash_steps(md.read_text(encoding="utf-8"))
+    blocks = g.extract_bash_steps(_sd_text())
     assert len(blocks) >= 6
     with_validate = [b for b in blocks if "validate-env" in b]
     assert len(with_validate) >= 5, f"expected validate-env in steps, got {len(with_validate)}"
@@ -305,18 +310,14 @@ def test_n39_extract_safe_deploy_steps() -> None:
 
 
 def test_n39_integrity_ok_on_real_sd() -> None:
-    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
-        encoding="utf-8"
-    )
+    md = _sd_text()
     g.assert_safe_deploy_integrity(md)
     g.assert_safe_deploy_block_hashes(md)
 
 
 def test_n39_block_hash_detects_any_step_mutation() -> None:
     """Любая правка критического bash-блока → drift hash (закрывает N1–N7)."""
-    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
-        encoding="utf-8"
-    )
+    md = _sd_text()
     g.assert_safe_deploy_block_hashes(md)
     mutated = md.replace("4b ok", "4b ok MUTATED", 1)
     with pytest.raises(SystemExit, match="hash drift|document hash|fence"):
@@ -339,9 +340,7 @@ def test_n39_block_hash_detects_any_step_mutation() -> None:
 
 def test_n39_document_pin_catches_a1_a18_outside_critical_blocks() -> None:
     """A1–A3/A5/A6/A16–A18: мутации вне 9 named blocks → document/fence pin."""
-    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
-        encoding="utf-8"
-    )
+    md = _sd_text()
     g.assert_safe_deploy_block_hashes(md)
     anchor = "## 4. Регистрация skill + патчи"
     assert anchor in md
@@ -422,9 +421,7 @@ def test_n39_document_pin_catches_a1_a18_outside_critical_blocks() -> None:
 
 def test_n39_mutations_m1_m4_detected() -> None:
     """Мутации M1–M4 из review Песочницы должны валить integrity (N39)."""
-    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
-        encoding="utf-8"
-    )
+    md = _sd_text()
     g.assert_safe_deploy_integrity(md)
 
     # M1: вырезать validate-env и case AGENT_REAL только из блока 10a
@@ -497,6 +494,29 @@ def test_n39_mutations_m1_m4_detected() -> None:
         g.assert_safe_deploy_integrity(mut9)
 
 
+
+
+def test_n49_check_hashes_cli_rejects_crlf_file(tmp_path: Path) -> None:
+    """N54: check-hashes на файле с CR → rc≠0 (не через read_text)."""
+    raw = _SD.read_bytes()
+    evil = tmp_path / "sd_crlf.md"
+    evil.write_bytes(raw.replace(b"\n", b"\r\n"))
+    fix = ROOT / "tests" / "fixtures" / "safe_deploy_block_hashes.json"
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "check-hashes", str(evil), str(fix)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "CR" in (r.stderr + r.stdout)
+
+
+def test_n55_missing_final_lf_changes_document_hash() -> None:
+    md = _sd_text()
+    assert md.endswith("\n")
+    assert g.document_sha256(md) != g.document_sha256(md[:-1])
+
 def test_n45_rejects_agents_under_workflows(
     symlink_box: dict[str, Path], tmp_path: Path
 ) -> None:
@@ -517,9 +537,7 @@ def test_n39_execute_step2_preamble_from_sd(
     symlink_box: dict[str, Path], tmp_path: Path
 ) -> None:
     """Прогнать preamble шага 2 из реального SAFE_DEPLOY.md (не копию)."""
-    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
-        encoding="utf-8"
-    )
+    md = _sd_text()
     step2 = next(b for b in g.extract_bash_steps(md) if "BEFORE_MARKER" in b)
     # только guard до touch
     preamble = step2.split("touch")[0]

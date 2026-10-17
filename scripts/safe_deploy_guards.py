@@ -296,13 +296,19 @@ def read_text_no_universal_newlines(path: Path) -> str:
 def document_sha256(md_text: str) -> str:
     """Полный sha256 текста SAFE_DEPLOY.md (закрывает вставки вне pin-блоков).
 
-    N49: любой ``\\r`` — отказ (без CR→LF нормализации / коллизий).
-    Допускается только добавление финального ``\\n``, если его нет.
+    N49/N55: любой ``\\r`` — отказ; финальный LF не добавляется (сырой текст).
     """
     if "\r" in md_text:
         raise SystemExit("SAFE_DEPLOY contains CR (\\r); refuse (N49)")
-    norm = md_text if md_text.endswith("\n") else md_text + "\n"
-    return hashlib.sha256(norm.encode("utf-8")).hexdigest()
+    return hashlib.sha256(md_text.encode("utf-8")).hexdigest()
+
+
+def document_sha256_path(path: Path) -> str:
+    """sha256 сырых байт файла; отказ при наличии CR (N49)."""
+    data = path.read_bytes()
+    if b"\r" in data:
+        raise SystemExit(f"{path}: contains CR (\\r); refuse (N49)")
+    return hashlib.sha256(data).hexdigest()
 
 
 def fence_hashes(md_text: str) -> list[str]:

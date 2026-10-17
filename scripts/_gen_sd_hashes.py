@@ -22,7 +22,7 @@ def main() -> None:
     print("document", doc[:16], "fences", len(fences))
     dest = ROOT / "tests/fixtures/safe_deploy_block_hashes.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(
+    payload = (
         json.dumps(
             {
                 "algo": "sha256",
@@ -35,9 +35,9 @@ def main() -> None:
             indent=2,
             ensure_ascii=False,
         )
-        + "\n",
-        encoding="utf-8",
+        + "\n"
     )
+    dest.write_bytes(payload.encode("utf-8"))
     print("wrote", dest)
 
 
