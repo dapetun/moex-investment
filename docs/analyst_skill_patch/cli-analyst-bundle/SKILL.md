@@ -10,7 +10,7 @@ description: >
 # CLI ↔ Аналитик портфеля (skill draft v2.2)
 
 **Не применять без Разрешения A** (`permissions/PERMISSION_A.md`).
-Дословные правки live: `live_patches/`. Deploy: `SAFE_DEPLOY.md`.
+Дословные правки live: `live_patches/`. Deploy: `MINIMAL_DEPLOY.md`.
 
 ## Глобальная видимость (платформенный факт)
 

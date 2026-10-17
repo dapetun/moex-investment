@@ -19,11 +19,12 @@
 
 | — (N52-N55) | cur-20261017-2145 | — | 78ae4f7 | 2115 | rejected | N59 pyc; N58 later. |
 | — (N58-N60) | cur-20261017-2215 | — | a5a59ba | 2145 | rejected | N59 shadow pkg; N60 replace/fsmonitor. |
-| — (N59-N60b) | cur-20261017-2235 | — | (tip) | 2215 | submitted | importlib GUARDS; EXPECT_TREE; isolated git; per-step cache. |
+| — (N59-N60b) | cur-20261017-2235 | — | ba1f23c | 2215 | rejected | F1–F8; owner chose вариант B (MINIMAL_DEPLOY). |
+| — (вариант B) | (pending review) | — | (tip after MINIMAL_DEPLOY) | 2235 | submitted | SAFE_DEPLOY superseded; `scripts/minimal_deploy.py` + external pin. **No live apply**. |
 
-## Pin values (N47) — только из задания Permission A (N61)
+## Pin values — MINIMAL_DEPLOY (внешний pin задания)
 
-- EXPECT_HEAD / EXPECT_TREE = tip из задания
-- EXPECT_DOC = `f70f6504442279f6e146ba0569a8d2bfc4febd1ba99ccc4a198a013c30ddca67`
-- EXPECT_FIX = `5f19a158194eda7dfd919f1f3a6f4d67239876aa5cec4b7842414eb93fb9f887`
-- EXPECT_GUARDS = `bd4d6f3f38bb2a57dc125c102923c541aa7b09d35fd4b5b061a2311e5c4ec880`
+См. `tests/fixtures/minimal_deploy_external_pin.json` (генерируется `scripts/_gen_minimal_deploy_pin.py`).  
+Передавать в `--expect-json` **снаружи** PKG. Не доверять pin изнутри архива.
+
+Старый SAFE_DEPLOY EXPECT_DOC/FIX/GUARDS — архив, не использовать для deploy.

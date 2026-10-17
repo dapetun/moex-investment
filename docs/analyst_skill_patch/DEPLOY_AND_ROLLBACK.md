@@ -1,6 +1,7 @@
 # Развёртывание и откат (кратко)
 
-Полный воспроизводимый план: **`SAFE_DEPLOY.md`**.  
+Полный воспроизводимый план: **`MINIMAL_DEPLOY.md`** + `scripts/minimal_deploy.py`.  
+`SAFE_DEPLOY.md` — superseded (архив).  
 Дословные патчи live: **`live_patches/`** (закрытие V8).  
 Разрешения: **`permissions/PERMISSION_A.md`**, **`permissions/PERMISSION_B.md`**.
 
@@ -33,6 +34,5 @@
 
 ## Rollback
 
-См. шаг 10 в `SAFE_DEPLOY.md`: **10a** — восстановление OPT/POS/QC/profile/SPEC
-из бэкапа; **10b** — снятие skill штатным delete по зарегистрированному
-`skill_id` (не `rm -rf`). Контуры независимы.
+См. rollback в `MINIMAL_DEPLOY.md`: файлы из `$BK`, затем platform delete
+только `skill_id` этой операции (не `rm -rf`).

@@ -309,12 +309,14 @@ def test_n39_extract_safe_deploy_steps() -> None:
         assert "|| exit" in b
 
 
+@pytest.mark.skip(reason="SAFE_DEPLOY superseded by MINIMAL_DEPLOY (вариант B)")
 def test_n39_integrity_ok_on_real_sd() -> None:
     md = _sd_text()
     g.assert_safe_deploy_integrity(md)
     g.assert_safe_deploy_block_hashes(md)
 
 
+@pytest.mark.skip(reason="SAFE_DEPLOY superseded by MINIMAL_DEPLOY (вариант B)")
 def test_n39_block_hash_detects_any_step_mutation() -> None:
     """Любая правка критического bash-блока → drift hash (закрывает N1–N7)."""
     md = _sd_text()
@@ -342,6 +344,7 @@ def test_n39_block_hash_detects_any_step_mutation() -> None:
         g.assert_safe_deploy_block_hashes(md.replace(step4c, bad4c))
 
 
+@pytest.mark.skip(reason="SAFE_DEPLOY superseded by MINIMAL_DEPLOY (вариант B)")
 def test_n39_document_pin_catches_a1_a18_outside_critical_blocks() -> None:
     """A1–A3/A5/A6/A16–A18: мутации вне 9 named blocks → document/fence pin."""
     md = _sd_text()

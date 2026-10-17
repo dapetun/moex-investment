@@ -1,4 +1,9 @@
-# Безопасный deploy Permission A (не выполнять без подтверждения)
+# SAFE_DEPLOY (SUPERSEDED)
+
+**Не исполнять.** Каноническая процедура: **`MINIMAL_DEPLOY.md`** + `scripts/minimal_deploy.py`  
+(вариант B после REJECT `cur-20261017-2235`). Файл сохранён как архив истории BL7–N60.
+
+# Безопасный deploy Permission A (не выполнять без подтверждения) — архив
 
 В этой подготовке deploy не выполняется: только текст процедуры и guards.
 Пакет: `cli-analyst-bundle` + `live_patches/*` @ репо SHA, зафиксированный в задании.

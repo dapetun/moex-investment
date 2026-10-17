@@ -1,3 +1,7 @@
 docs/analyst_skill_patch/SAFE_DEPLOY.md text eol=lf
+docs/analyst_skill_patch/MINIMAL_DEPLOY.md text eol=lf
 docs/analyst_skill_patch/ops/ledger.md text eol=lf
 tests/fixtures/safe_deploy_block_hashes.json text eol=lf
+tests/fixtures/minimal_deploy_external_pin.json text eol=lf
+scripts/minimal_deploy.py text eol=lf
+scripts/safe_deploy_guards.py text eol=lf

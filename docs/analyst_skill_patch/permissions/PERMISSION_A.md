@@ -11,8 +11,9 @@
    - `live_patches/QC_SKILL.patch.md`
    - `live_patches/PROFILE_DESCRIPTION.patch.md`
    - `live_patches/SPEC_analysis_spec.patch.md` (если включён в approve)
-3. Выполнить `SAFE_DEPLOY.md` шаги 1–10 на fixture/синтетике
-   (включая 7b dry-run формы user_csv на искусственных данных).
+3. Выполнить `MINIMAL_DEPLOY.md` (фаза A/B) на fixture/синтетике
+   (включая dry-run формы user_csv на искусственных данных).
+   `SAFE_DEPLOY.md` — архив, не исполнять.
 4. `optimizer.yaml` остаётся `enabled: false`.
 5. Инициатор CLI — только Даниил в чате Аналитика.
 6. PR #2 не сливать.

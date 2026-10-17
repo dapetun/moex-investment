@@ -1,6 +1,6 @@
 # Deploy operations ledger (Cursor ↔ Grok Bot)
 
-Не заменяет `SAFE_DEPLOY.md`. Не меняет инструкции ботов.  
+Не заменяет `MINIMAL_DEPLOY.md`. Не меняет инструкции ботов.  
 Цель: убрать неопределённость «webhook 200, а статуса нет» и запретить
 параллельные apply к одному baseline.
 
@@ -10,7 +10,7 @@
 |--------|--------|
 | `submitted` | webhook принят (есть runUuid); ещё нет accept исполнителя |
 | `accepted` | Регулятор назначил владельца; handoff.md создан |
-| `running` | исполнитель начал шаги SAFE_DEPLOY |
+| `running` | исполнитель начал шаги MINIMAL_DEPLOY |
 | `applied` | skill зарегистрирован + патчи применены; MANIFEST_AFTER ok |
 | `verified` | smoke/синтетика или явный «ожидает команду Даниила» |
 | `failed` | ошибка до/во время apply |
