@@ -11,3 +11,4 @@
 | â€” (BL11+N39) | cur-20261015-1655 | â€” | 034b17f | 1640 | submitted | Fix BL11 export + N39 execute SD preamble after REJECT. |
 | — (N39+N45) | cur-20261015-1710 | — | 4edde39 | 1655 | submitted | Integrity M1-M4 + strict agent id after REJECT@034b17f. |
 | — (N45+M4-9) | cur-20261015-1730 | — | 9a701a7 | 1710 | submitted | Parent agents/ + integrity M4-M9 after REJECT@4edde39. |
+| — (N39 hashes) | cur-20261015-1745 | — | a813540 | 1730 | submitted | Pin SAFE_DEPLOY block sha256 after REJECT@9a701a7. |
