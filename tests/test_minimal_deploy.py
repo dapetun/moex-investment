@@ -133,11 +133,15 @@ def _make_delete(store: dict):
     return delete
 
 
+def _skill(body: str) -> str:
+    return f"---\nname: x\ndescription: x\n---\n{body}"
+
+
 def _writes_and_expected(box: dict) -> tuple[dict[str, str], dict[str, str]]:
     writes = {
-        box["allow"][0]: "# OPT\npatched\n",
-        box["allow"][1]: "# POS\npatched\n",
-        box["allow"][2]: "# QC\npatched\n",
+        box["allow"][0]: _skill("# OPT\npatched\n"),
+        box["allow"][1]: _skill("# POS\npatched\n"),
+        box["allow"][2]: _skill("# QC\npatched\n"),
         box["allow"][3]: json.dumps({"description": "patched"}, ensure_ascii=False),
         box["allow"][4]: "# spec\npatched\n",
     }
@@ -147,16 +151,16 @@ def _writes_and_expected(box: dict) -> tuple[dict[str, str], dict[str, str]]:
 
 def test_verify_package_ok_and_rejects_bad_hash(box: dict) -> None:
     expect = _expect_hashes(box["pkg"])
-    md.verify_package(box["pkg"], expect)
+    md.verify_package(box["pkg"], expect, require_commit=False)
     bad = dict(expect)
     bad["scripts/minimal_deploy.py"] = "0" * 64
     with pytest.raises(SystemExit, match="hash mismatch"):
-        md.verify_package(box["pkg"], bad)
+        md.verify_package(box["pkg"], bad, require_commit=False)
 
 
 def test_verify_package_rejects_empty_pin(box: dict) -> None:
     with pytest.raises(SystemExit, match="empty expect"):
-        md.verify_package(box["pkg"], {})
+        md.verify_package(box["pkg"], {}, require_commit=False)
 
 
 def test_verify_package_rejects_pyc(box: dict) -> None:
@@ -164,7 +168,7 @@ def test_verify_package_rejects_pyc(box: dict) -> None:
     evil.mkdir(parents=True)
     (evil / "x.pyc").write_bytes(b"\0")
     with pytest.raises(SystemExit, match="bytecode"):
-        md.verify_package(box["pkg"], _expect_hashes(box["pkg"]))
+        md.verify_package(box["pkg"], _expect_hashes(box["pkg"]), require_commit=False)
 
 
 def test_verify_rejects_expect_json_inside_pkg(box: dict) -> None:
@@ -191,7 +195,7 @@ def test_empty_baseline_refused(box: dict) -> None:
 
 
 def test_full_success_and_analyst_skill_visible(box: dict) -> None:
-    md.verify_package(box["pkg"], _expect_hashes(box["pkg"]))
+    md.verify_package(box["pkg"], _expect_hashes(box["pkg"]), require_commit=False)
     bk = box["tmp"] / "bk"
     base = _baseline(box)
     opt_sha = md.sha256_file(box["opt_yaml"])
@@ -268,7 +272,7 @@ def test_preexisting_cli_skill_stops(box: dict) -> None:
 
 
 def test_platform_create_fail_no_file_changes(box: dict) -> None:
-    md.verify_package(box["pkg"], _expect_hashes(box["pkg"]))
+    md.verify_package(box["pkg"], _expect_hashes(box["pkg"]), require_commit=False)
     bk = box["tmp"] / "bk3"
     base = _baseline(box)
     opt_sha = md.sha256_file(box["opt_yaml"])
@@ -309,7 +313,7 @@ def test_symlink_skill_root_accepted(box: dict) -> None:
 
 
 def test_patch_failure_triggers_rollback(box: dict) -> None:
-    md.verify_package(box["pkg"], _expect_hashes(box["pkg"]))
+    md.verify_package(box["pkg"], _expect_hashes(box["pkg"]), require_commit=False)
     bk = box["tmp"] / "bk4"
     base = _baseline(box)
     opt_sha = md.sha256_file(box["opt_yaml"])
@@ -331,14 +335,15 @@ def test_patch_failure_triggers_rollback(box: dict) -> None:
     )
     sid, spath = create(skill_src)
     md.record_created_skill(bk, sid, spath)
+    partial = "---\nname: opt\n---\n# OPT\npartial\n"
     md.apply_file_writes(
-        {box["allow"][0]: "# OPT\npartial\n"},
+        {box["allow"][0]: partial},
         box["allow"],
         expected_after_sha={
-            md.g().canonicalize_path(box["allow"][0]): _sha_of("# OPT\npartial\n")
+            md.g().canonicalize_path(box["allow"][0]): _sha_of(partial)
         },
     )
-    with pytest.raises(SystemExit, match="allowlist"):
+    with pytest.raises(SystemExit, match="optimizer.yaml never writable|allowlist"):
         md.apply_file_writes(
             {str(box["opt_yaml"]): "enabled: true\n"},
             box["allow"],
@@ -484,6 +489,38 @@ def test_profile_must_be_json(box: dict) -> None:
             box["allow"],
             expected_after_sha={md.g().canonicalize_path(box["allow"][3]): _sha_of("NOT JSON")},
         )
+
+
+def test_refuse_optimizer_yaml_write(box: dict) -> None:
+    with pytest.raises(SystemExit, match="optimizer.yaml never writable"):
+        md.apply_file_writes(
+            {str(box["opt_yaml"]): "enabled: false\n"},
+            box["allow"] + [str(box["opt_yaml"])],
+            expected_after_sha={
+                md.g().canonicalize_path(str(box["opt_yaml"])): _sha_of("enabled: false\n")
+            },
+        )
+
+
+def test_tree_skips_store_db(box: dict) -> None:
+    """R-1: store.db в tree, но не в BK."""
+    store = box["agent"] / "store.db"
+    store.write_bytes(b"SECRET")
+    bk = box["tmp"] / "bk_store"
+    md.run_phase_a(
+        deploy_op_id="pa-20261017-2312",
+        bk=bk,
+        baseline=_baseline(box),
+        tracked_paths=box["allow"],
+        workflows=box["workflows_real"],
+        optimizer_yaml=box["opt_yaml"],
+        tree_roots=[box["workflows_real"], box["agent"], box["invest"]],
+    )
+    # store.db не в BK
+    for f in (bk / "files").iterdir():
+        assert f.read_bytes() != b"SECRET"
+    before = md.g().load_manifest(bk / "MANIFEST_BEFORE.txt")
+    assert not any(p.endswith("store.db") for p in before)
 
 
 def test_exit_nonzero_on_hash_mismatch_cli(box: dict) -> None:

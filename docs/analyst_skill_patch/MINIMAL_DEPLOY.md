@@ -9,7 +9,7 @@
 
 1. Один `deploy_op_id`, один tip SHA, один `$BK`.
 2. Пакет кода — архив tip; хэши критических файлов из **задания** (не изнутри архива).
-3. Allowlist live-файлов фиксирован; `optimizer.yaml` не меняется (`enabled: false`).
+3. Allowlist строится в коде (`allowlist_paths` + `AGENT_ID`); `optimizer.yaml` никогда не writable.
 4. Create/delete skill — только штатный инструмент платформы.
 5. Любой сбой → rollback файлов из `$BK` + delete только skill этой операции.
 6. Синтетика only; ISS off; PR #2 не сливать.

@@ -108,6 +108,7 @@ def verify_package(
     *,
     expect_head: str = "",
     archive_commit_id: str = "",
+    require_commit: bool = True,
 ) -> None:
     """Сверить критические файлы пакета с внешними expect_hashes (из задания)."""
     pkg_root = pkg_root.resolve()
@@ -126,16 +127,18 @@ def verify_package(
         got = sha256_file(path, refuse_cr=True)
         if got != want:
             raise SystemExit(f"hash mismatch {rel}: got {got} want {want}")
-    if expect_head:
-        if len(expect_head) < 7:
-            raise SystemExit("expect_head too short")
-        if archive_commit_id and not archive_commit_id.startswith(expect_head[:7]):
-            if archive_commit_id != expect_head and not expect_head.startswith(
-                archive_commit_id
-            ):
-                raise SystemExit(
-                    f"archive commit {archive_commit_id!r} != expect_head {expect_head!r}"
-                )
+    if not require_commit:
+        return
+    if not expect_head or len(expect_head) != 40 or any(
+        c not in "0123456789abcdef" for c in expect_head.lower()
+    ):
+        raise SystemExit("expect_head required: full 40-hex commit SHA (R-4)")
+    if not archive_commit_id:
+        raise SystemExit("archive_commit_id required (git get-tar-commit-id) (R-4)")
+    if archive_commit_id.lower() != expect_head.lower():
+        raise SystemExit(
+            f"archive commit {archive_commit_id!r} != expect_head {expect_head!r}"
+        )
 
 
 def parse_baseline_table(audit_md: str) -> dict[str, str]:
@@ -221,19 +224,46 @@ def check_no_cli_skill(workflows_dir: Path) -> None:
             raise SystemExit(f"cli-analyst-bundle already registered at {skill_md.parent}")
 
 
+_TREE_SKIP_NAMES = frozenset(
+    {
+        "store.db",
+        "store.db-wal",
+        "store.db-shm",
+    }
+)
+_TREE_SKIP_DIR_NAMES = frozenset({"assets", "attachments", "__pycache__"})
+
+
+def _skip_tree_path(p: Path) -> bool:
+    """Исключения для tree-manifest (R-1): не трогать секреты/БД/медиа."""
+    name = p.name
+    if name in _TREE_SKIP_NAMES or name.endswith("-secrets.json"):
+        return True
+    if name.endswith(".pyc"):
+        return True
+    for part in p.parts:
+        if part in _TREE_SKIP_DIR_NAMES:
+            return True
+    return False
+
+
 def collect_tree_files(*roots: Path) -> list[str]:
-    """Все обычные файлы под корнями (N-2: расширенный MANIFEST)."""
+    """Файлы под корнями для детекции drift (не для BK/restore)."""
     out: list[str] = []
     for root in roots:
         root = root.resolve()
         if not root.exists():
             raise SystemExit(f"tree root missing: {root}")
         if root.is_file():
-            out.append(str(root))
+            if not _skip_tree_path(root):
+                out.append(str(root))
             continue
         for p in sorted(root.rglob("*")):
-            if p.is_file() and not p.is_symlink():
-                out.append(str(p.resolve()))
+            if not p.is_file() or p.is_symlink():
+                continue
+            if _skip_tree_path(p):
+                continue
+            out.append(str(p.resolve()))
     return out
 
 
@@ -366,7 +396,9 @@ def apply_file_writes(
     *,
     expected_after_sha: dict[str, str] | None = None,
 ) -> None:
-    """Записать содержимое только в allowlist-пути; сверить sha «после» (N-6)."""
+    """Записать содержимое только в allowlist-пути; сверить sha «после» (N-6/R-2/R-8)."""
+    if not writes:
+        raise SystemExit("empty writes refused")
     allow = {g().canonicalize_path(p) for p in allowlist}
     exp: dict[str, str] | None = None
     if expected_after_sha is not None:
@@ -376,19 +408,29 @@ def apply_file_writes(
                 raise SystemExit(f"missing expected_after_sha for {raw}")
     for raw, content in writes.items():
         canon = g().canonicalize_path(raw)
+        if Path(canon).name == "optimizer.yaml":
+            raise SystemExit("write refused: optimizer.yaml never writable")
         if canon not in allow:
             raise SystemExit(f"write refused (not in allowlist): {canon}")
-        if canon.endswith("profile.json") or Path(canon).name == "profile.json":
+        if not content:
+            raise SystemExit(f"empty write refused: {canon}")
+        if Path(canon).name == "profile.json":
             try:
-                json.loads(content)
+                obj = json.loads(content)
             except json.JSONDecodeError as e:
                 raise SystemExit(f"profile.json must be valid JSON: {e}") from e
+            if not isinstance(obj, dict) or "description" not in obj:
+                raise SystemExit("profile.json must be object with description")
+        if Path(canon).name == "SKILL.md" and not content.lstrip().startswith("---"):
+            raise SystemExit(f"SKILL.md must have frontmatter: {canon}")
         Path(canon).write_text(content, encoding="utf-8", newline="\n")
         if exp is not None:
             got = sha256_file(Path(canon))
             want = exp[canon]
             if got != want:
-                raise SystemExit(f"expected_after_sha mismatch {canon}: got {got} want {want}")
+                raise SystemExit(
+                    f"expected_after_sha mismatch {canon}: got {got} want {want}"
+                )
 
 
 def register_skill_path(
@@ -423,10 +465,56 @@ def compare_registered_skill(repo_skill: Path, live_skill: Path) -> None:
     )
 
 
-def record_created_skill(bk: Path, skill_id: str, skill_path: str) -> None:
-    """Зафиксировать skill этой операции в BK (noclobber) — N-1."""
+def assert_recorded_skill_path(
+    skill_id: str,
+    skill_path: str,
+    *,
+    skill_root_logical: str,
+    agent_data_logical: str,
+    existed_before: set[str],
+) -> str:
+    """R-6: path под workflows, id в basename, name=cli-analyst-bundle."""
+    real = register_skill_path(
+        skill_path,
+        skill_root_logical,
+        agent_data_logical,
+        existed_before=existed_before,
+    )
+    if Path(real).name != skill_id and skill_id not in Path(real).name:
+        # basename каталога должен совпадать с id
+        if Path(real).name != skill_id:
+            raise SystemExit(
+                f"skill_path basename {Path(real).name!r} != skill_id {skill_id!r}"
+            )
+    live_md = Path(real) / "SKILL.md"
+    if not live_md.is_file():
+        raise SystemExit(f"recorded skill missing SKILL.md: {live_md}")
+    fields, _ = g().split_skill_md(live_md.read_text(encoding="utf-8"))
+    if fields.get("name") != SKILL_NAME:
+        raise SystemExit(f"recorded skill name != {SKILL_NAME}")
+    return real
+
+
+def record_created_skill(
+    bk: Path,
+    skill_id: str,
+    skill_path: str,
+    *,
+    skill_root_logical: str | None = None,
+    agent_data_logical: str | None = None,
+    existed_before: set[str] | None = None,
+) -> None:
+    """Зафиксировать skill этой операции в BK (noclobber) — N-1/R-6."""
     if not skill_id or not skill_path:
         raise SystemExit("record_created_skill: empty id/path")
+    if skill_root_logical and agent_data_logical is not None:
+        skill_path = assert_recorded_skill_path(
+            skill_id,
+            skill_path,
+            skill_root_logical=skill_root_logical,
+            agent_data_logical=agent_data_logical,
+            existed_before=existed_before or set(),
+        )
     sid_f = bk / "skill_id.txt"
     path_f = bk / "skill_path.txt"
     if sid_f.exists() or path_f.exists():
@@ -471,16 +559,29 @@ def run_phase_a(
     if bk.exists() and any(bk.iterdir()):
         raise SystemExit(f"BK not empty: {bk}")
     bk.mkdir(parents=True, exist_ok=True)
-    # N-2: манифест по дереву, если переданы корни; иначе tracked_paths
-    if tree_roots:
-        tracked_paths = collect_tree_files(*tree_roots)
-    backup_targets = [p for p in tracked_paths if Path(p).is_file()]
-    # бэкапим только allowlist-пересечения + всё из baseline keys
-    backup_set = sorted(set(backup_targets) | set(baseline.keys()))
+    # R-1: BK/restore только allowlist∪baseline; tree — только детекция
+    backup_set = sorted(set(tracked_paths) | set(baseline.keys()))
     backup_files(backup_set, bk / "files")
-    before = write_manifest(tracked_paths, bk / "MANIFEST_BEFORE.txt")
+    manifest_paths = list(tracked_paths)
+    if tree_roots:
+        # дерево для детекции; BK не расширяем store.db и т.п.
+        tree_paths = collect_tree_files(*tree_roots)
+        manifest_paths = sorted(set(manifest_paths) | set(tree_paths))
+        (bk / "tree_roots.json").write_text(
+            json.dumps([str(p) for p in tree_roots], indent=2) + "\n",
+            encoding="utf-8",
+        )
+    before = write_manifest(manifest_paths, bk / "MANIFEST_BEFORE.txt")
     (bk / "deploy_op_id.txt").write_text(deploy_op_id + "\n", encoding="utf-8")
-    return {"manifest_before": before, "bk": str(bk.resolve()), "tracked": tracked_paths}
+    (bk / "allowlist.json").write_text(
+        json.dumps(tracked_paths, indent=2) + "\n", encoding="utf-8"
+    )
+    return {
+        "manifest_before": before,
+        "bk": str(bk.resolve()),
+        "tracked": tracked_paths,
+        "manifest_paths": manifest_paths,
+    }
 
 
 def run_phase_b_files(
@@ -497,11 +598,27 @@ def run_phase_b_files(
     """Применить файловые патчи + MANIFEST_AFTER + allowlist + optimizer pin."""
     if expected_after_sha is None:
         raise SystemExit("expected_after_sha required (N-6)")
+    # R-2: allowlist только из BK (зафиксирован в phase-a), не из произвольного config
+    allow_f = bk / "allowlist.json"
+    if allow_f.is_file():
+        fixed = json.loads(allow_f.read_text(encoding="utf-8"))
+        if {g().canonicalize_path(p) for p in allowlist} != {
+            g().canonicalize_path(p) for p in fixed
+        }:
+            raise SystemExit("allowlist drift vs BK/allowlist.json (R-2)")
+        allowlist = fixed
     before = g().load_manifest(bk / "MANIFEST_BEFORE.txt")
     apply_file_writes(writes, allowlist, expected_after_sha=expected_after_sha)
-    paths_after = list(tracked_paths)
+    # R-3: пересобрать дерево если корни сохранены
+    paths_after = list(before.keys())
+    tree_f = bk / "tree_roots.json"
+    if tree_f.is_file():
+        roots = [Path(p) for p in json.loads(tree_f.read_text(encoding="utf-8"))]
+        paths_after = collect_tree_files(*roots)
+        # allowlist-файлы всегда в манифесте
+        paths_after = sorted(set(paths_after) | {g().canonicalize_path(p) for p in allowlist})
     if new_skill_md_path:
-        paths_after.append(new_skill_md_path)
+        paths_after = list(paths_after) + [new_skill_md_path]
     after = write_manifest(paths_after, bk / "MANIFEST_AFTER.txt")
     verify_manifest_allowlist(
         before,
@@ -524,12 +641,10 @@ def run_rollback(
 ) -> None:
     """Файлы из BK + delete только skill, записанного в BK (N-1, N-3)."""
     errors: list[str] = []
-    # файловый контур
     try:
         restore_backup(bk / "files")
-    except SystemExit as e:
+    except (SystemExit, OSError) as e:
         errors.append(f"files: {e}")
-    # delete-контур независим
     sid_f = bk / "skill_id.txt"
     if sid_f.is_file() and platform_delete:
         try:
@@ -537,8 +652,18 @@ def run_rollback(
             if not requested_skill_id:
                 raise SystemExit("requested_skill_id required when skill was recorded")
             refuse_delete_foreign(recorded_id, requested_skill_id)
+            # R-6: basename path == id
+            if Path(recorded_path).name != recorded_id:
+                raise SystemExit(
+                    f"recorded path basename {Path(recorded_path).name!r} != id"
+                )
+            live_md = Path(recorded_path) / "SKILL.md"
+            if live_md.is_file():
+                fields, _ = g().split_skill_md(live_md.read_text(encoding="utf-8"))
+                if fields.get("name") != SKILL_NAME:
+                    raise SystemExit("delete refused: skill name mismatch")
             platform_delete(recorded_id, recorded_path)
-        except SystemExit as e:
+        except (SystemExit, OSError) as e:
             errors.append(f"delete: {e}")
     elif requested_skill_id and platform_delete and not sid_f.is_file():
         errors.append("delete: skill_id.txt missing — refuse delete without BK record")
@@ -597,55 +722,79 @@ def main(argv: list[str]) -> int:
                 continue
             raise SystemExit(f"bad arg {argv[i]}")
         verify_package(
-            pkg, expect, expect_head=expect_head, archive_commit_id=archive_commit
+            pkg,
+            expect,
+            expect_head=expect_head,
+            archive_commit_id=archive_commit,
+            require_commit=True,
         )
         print("package ok")
         return 0
     if cmd in {"phase-a", "phase-b", "rollback"}:
-        # явный JSON-конфиг без дефолтов на live (N-6)
         if "--config" not in argv:
             raise SystemExit(f"{cmd} requires --config JSON")
-        cfg_path = Path(argv[argv.index("--config") + 1])
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        if cmd == "phase-a":
-            run_phase_a(
-                deploy_op_id=cfg["deploy_op_id"],
-                bk=Path(cfg["bk"]),
-                baseline=cfg["baseline"],
-                tracked_paths=cfg.get("tracked_paths") or list(cfg["baseline"]),
-                workflows=Path(cfg["workflows"]),
-                optimizer_yaml=Path(cfg["optimizer_yaml"]),
-                active_ops=cfg.get("active_ops") or [],
-                tree_roots=[Path(p) for p in cfg["tree_roots"]]
-                if cfg.get("tree_roots")
-                else None,
-            )
-            print("phase-a ok")
+        try:
+            cfg_path = Path(argv[argv.index("--config") + 1])
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except (IndexError, json.JSONDecodeError, OSError) as e:
+            raise SystemExit(f"bad --config: {e}") from e
+        try:
+            if cmd == "phase-a":
+                # R-2: allowlist строится в коде, не из произвольного списка
+                allow = allowlist_paths(
+                    skill_root=Path(cfg["workflows"]),
+                    agent_dir=Path(cfg["agent_dir"]),
+                    invest_spec=Path(cfg["invest_spec"]),
+                )
+                run_phase_a(
+                    deploy_op_id=cfg["deploy_op_id"],
+                    bk=Path(cfg["bk"]),
+                    baseline=cfg["baseline"],
+                    tracked_paths=allow,
+                    workflows=Path(cfg["workflows"]),
+                    optimizer_yaml=Path(cfg["optimizer_yaml"]),
+                    active_ops=cfg.get("active_ops") or [],
+                    tree_roots=[
+                        Path(cfg["workflows"]),
+                        Path(cfg["agent_dir"]),
+                        Path(cfg["invest_spec"]).parent,
+                    ],
+                )
+                print("phase-a ok")
+                return 0
+            if cmd == "phase-b":
+                allow = json.loads(
+                    (Path(cfg["bk"]) / "allowlist.json").read_text(encoding="utf-8")
+                )
+                run_phase_b_files(
+                    bk=Path(cfg["bk"]),
+                    writes=cfg["writes"],
+                    allowlist=allow,
+                    tracked_paths=allow,
+                    optimizer_yaml=Path(cfg["optimizer_yaml"]),
+                    optimizer_sha_before=cfg["optimizer_sha_before"],
+                    new_skill_md_path=cfg.get("new_skill_md_path"),
+                    expected_after_sha=cfg["expected_after_sha"],
+                )
+                print("phase-b ok")
+                return 0
+            bk = Path(cfg["bk"])
+            file_err = None
+            try:
+                restore_backup(bk / "files")
+            except (SystemExit, OSError) as e:
+                file_err = str(e)
+            if (bk / "skill_id.txt").is_file():
+                sid, spath = load_recorded_skill(bk)
+                req = cfg.get("requested_skill_id") or sid
+                refuse_delete_foreign(sid, req)
+                print(f"ROLLBACK_DELETE_CANDIDATE id={sid} path={spath}")
+            if file_err:
+                raise SystemExit(f"rollback-files failed: {file_err}")
+            print("rollback-files ok")
             return 0
-        if cmd == "phase-b":
-            run_phase_b_files(
-                bk=Path(cfg["bk"]),
-                writes=cfg["writes"],
-                allowlist=cfg["allowlist"],
-                tracked_paths=cfg["tracked_paths"],
-                optimizer_yaml=Path(cfg["optimizer_yaml"]),
-                optimizer_sha_before=cfg["optimizer_sha_before"],
-                new_skill_md_path=cfg.get("new_skill_md_path"),
-                expected_after_sha=cfg["expected_after_sha"],
-            )
-            print("phase-b ok")
-            return 0
-        # rollback — без platform_delete в CLI (колбэк только у Регулятора);
-        # CLI восстанавливает файлы и печатает recorded skill для delete
-        bk = Path(cfg["bk"])
-        restore_backup(bk / "files")
-        if (bk / "skill_id.txt").is_file():
-            sid, spath = load_recorded_skill(bk)
-            req = cfg.get("requested_skill_id") or sid
-            refuse_delete_foreign(sid, req)
-            print(f"ROLLBACK_DELETE_CANDIDATE id={sid} path={spath}")
-        print("rollback-files ok")
-        return 0
+        except KeyError as e:
+            raise SystemExit(f"config missing key: {e}") from e
     print(f"unknown {cmd}", file=sys.stderr)
     return 2
 
