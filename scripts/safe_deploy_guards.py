@@ -243,7 +243,7 @@ def load_manifest(path: Path) -> dict[str, str]:
     return d
 
 
-_FENCE_RE = re.compile(r"^```([^\n]*)\r?\n(.*?)```", re.MULTILINE | re.DOTALL)
+_FENCE_RE = re.compile(r"^```([^\n]*)\n?\n(.*?)```", re.MULTILINE | re.DOTALL)
 
 
 def extract_bash_steps(md_text: str) -> list[str]:
@@ -296,7 +296,7 @@ def read_text_no_universal_newlines(path: Path) -> str:
 def document_sha256(md_text: str) -> str:
     """Полный sha256 текста SAFE_DEPLOY.md (закрывает вставки вне pin-блоков).
 
-    N49/N55: любой ``\\r`` — отказ; финальный LF не добавляется (сырой текст).
+    N49/N55: любой CR — отказ; финальный LF не добавляется (сырой текст).
     """
     if "\r" in md_text:
         raise SystemExit("SAFE_DEPLOY contains CR (\\r); refuse (N49)")

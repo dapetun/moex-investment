@@ -325,10 +325,14 @@ def test_n39_block_hash_detects_any_step_mutation() -> None:
     # N2-style: comment out validate-env in 10a
     blocks = g.extract_bash_steps(md)
     step10a = next(b for b in blocks if 'cp -a "$BK/profile.json"' in b)
-    bad = step10a.replace(
-        "python3 -B \"$REPO_ROOT/scripts/safe_deploy_guards.py\" validate-env",
-        ": # python3 -B \"$REPO_ROOT/scripts/safe_deploy_guards.py\" validate-env",
+    import re as _re
+    bad, nsub = _re.subn(
+        r"python3[^\n]*validate-env",
+        lambda m: ": # " + m.group(0),
+        step10a,
+        count=1,
     )
+    assert nsub == 1
     with pytest.raises(SystemExit, match="hash drift|document hash|fence|missing validate"):
         g.assert_safe_deploy_block_hashes(md.replace(step10a, bad))
     # N6: 4c || true

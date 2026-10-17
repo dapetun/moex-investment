@@ -51,20 +51,21 @@ WF="$SKILL_ROOT_REAL"
 AGENT_REAL=$(realpath -e "$AGENT")
 REPO_ROOT="<клон moex-investment @ SHA>"
 # BL11: export обязателен — иначе python validate-env не видит shell-переменные
-# N59: PYTHONDONTWRITEBYTECODE + PYTHONPYCACHEPREFIX задаются в §0 и наследуются
 export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
-  AGENT_DATA_LOGICAL AGENT_DATA_REAL REPO_ROOT DEPLOY_OP_ID \
-  PYTHONDONTWRITEBYTECODE PYTHONPYCACHEPREFIX
+  AGENT_DATA_LOGICAL AGENT_DATA_REAL REPO_ROOT DEPLOY_OP_ID
+# N59: каждый исполнитель сам задаёт PYTHONPYCACHEPREFIX + GUARDS (не наследование).
 # N43/N44/N45: пустые/корневые пути + WF==SKILL_ROOT_REAL + BK==DEPLOY_ROOT + agents/
 BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
   SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
   AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
-  python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+  python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 ```
 
 **BL10 + N43/N44 (обязательно):** каждый шаг ниже начинается с **inline**
 `set -euo pipefail` + `${VAR:?}` + `validate-env` (не вызов shell-функции).
 Пустой `WF=""` / `AGENT_REAL="/"` / рассинхрон WF≠SKILL_ROOT_REAL — отказ.
+**N59:** в каждом шаге — `PYTHONPYCACHEPREFIX=$(mktemp -d)`, `GUARDS=…/safe_deploy_guards.py`,
+сверка `sha256sum "$GUARDS"` с `EXPECT_GUARDS`, отказ если есть `scripts/safe_deploy_guards/` (пакет-тень).
 
 ## 0. Предусловия
 
@@ -82,26 +83,33 @@ set -euo pipefail
 REPO_ROOT="${REPO_ROOT:?}"
 # N47/N52/N53: эталон ТОЛЬКО из задания Permission A (не из checkout/ledger).
 # Исполнять этот блок дословно из задания; SD — справочник под pin.
+# Предпочтительно: свежий `git clone` + checkout EXPECT_HEAD (без refs/replace).
 EXPECT_HEAD="${EXPECT_HEAD:?set tip SHA from Permission A assignment}"
+EXPECT_TREE="${EXPECT_TREE:?set HEAD^{tree} from Permission A assignment}"
 EXPECT_DOC="${EXPECT_DOC:?set document_sha256 from Permission A assignment}"
 EXPECT_FIX="${EXPECT_FIX:?set fixture sha256 from Permission A assignment}"
 EXPECT_GUARDS="${EXPECT_GUARDS:?set safe_deploy_guards.py sha256 from Permission A assignment}"
 SD="$REPO_ROOT/docs/analyst_skill_patch/SAFE_DEPLOY.md"
 FIX="$REPO_ROOT/tests/fixtures/safe_deploy_block_hashes.json"
 GUARDS="$REPO_ROOT/scripts/safe_deploy_guards.py"
-# N58: fail-closed на ошибку git (не пустой stdout при rc≠0).
-HEAD_GOT=$(git -C "$REPO_ROOT" rev-parse HEAD) || exit 1
+# N58/N60: изолированный git (без replace/fsmonitor/hooks); fail-closed. Без shell-функций.
+export GIT_NO_REPLACE_OBJECTS=1 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+HEAD_GOT=$(git -C "$REPO_ROOT" -c core.fsmonitor= -c core.hooksPath=/dev/null rev-parse HEAD) || exit 1
 [ "$HEAD_GOT" = "$EXPECT_HEAD" ] || exit 1
-PORC=$(git -C "$REPO_ROOT" status --porcelain) || exit 1
+TREE_GOT=$(git -C "$REPO_ROOT" -c core.fsmonitor= -c core.hooksPath=/dev/null rev-parse "HEAD^{tree}") || exit 1
+[ "$TREE_GOT" = "$EXPECT_TREE" ] || exit 1
+PORC=$(git -C "$REPO_ROOT" -c core.fsmonitor= -c core.hooksPath=/dev/null status --porcelain) || exit 1
 [ -z "$PORC" ] || exit 1
-# N60: skip-worktree / assume-unchanged не скрывают правки.
-git -C "$REPO_ROOT" update-index --really-refresh >/dev/null 2>&1 || exit 1
-git -C "$REPO_ROOT" diff-index --quiet HEAD -- || exit 1
-[ -z "$(git -C "$REPO_ROOT" ls-files -v | awk '$1 != "H"')" ] || exit 1
-# N59: не читать ignored __pycache__/*.pyc вместо guards.py
+UNTRACKED=$(git -C "$REPO_ROOT" -c core.fsmonitor= -c core.hooksPath=/dev/null ls-files -o) || exit 1
+[ -z "$UNTRACKED" ] || exit 1
+git -C "$REPO_ROOT" -c core.fsmonitor= -c core.hooksPath=/dev/null update-index --really-refresh >/dev/null 2>&1 || exit 1
+git -C "$REPO_ROOT" -c core.fsmonitor= -c core.hooksPath=/dev/null diff-index --quiet HEAD -- || exit 1
+[ -z "$(git -C "$REPO_ROOT" -c core.fsmonitor= -c core.hooksPath=/dev/null ls-files -v | awk '$1 != "H"')" ] || exit 1
+# N59: только файл guards.py; пакет-тень и __pycache__ запрещены
+[ -f "$GUARDS" ] || exit 1
+[ ! -e "$REPO_ROOT/scripts/safe_deploy_guards" ] || exit 1
 export PYTHONDONTWRITEBYTECODE=1
-PYTHONPYCACHEPREFIX=$(mktemp -d)
-export PYTHONPYCACHEPREFIX
+PYTHONPYCACHEPREFIX=$(mktemp -d); export PYTHONPYCACHEPREFIX
 rm -rf "$REPO_ROOT/scripts/__pycache__"
 DOC_GOT=$(sha256sum "$SD" | awk '{print $1}')
 FIX_GOT=$(sha256sum "$FIX" | awk '{print $1}')
@@ -109,7 +117,7 @@ GUARDS_GOT=$(sha256sum "$GUARDS" | awk '{print $1}')
 [ "$DOC_GOT" = "$EXPECT_DOC" ] || exit 1
 [ "$FIX_GOT" = "$EXPECT_FIX" ] || exit 1
 [ "$GUARDS_GOT" = "$EXPECT_GUARDS" ] || exit 1
-python3 -B "$GUARDS" check-hashes "$SD" "$FIX" \
+python3 -I -B "$GUARDS" check-hashes "$SD" "$FIX" \
   --expect-document "$EXPECT_DOC" --expect-fixture "$EXPECT_FIX" || exit 1
 # Не перегенерировать fixture во время deploy.
 ```
@@ -137,6 +145,14 @@ set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe: <$WF>"; exit 1;; esac
+export PYTHONDONTWRITEBYTECODE=1
+PYTHONPYCACHEPREFIX=$(mktemp -d); export PYTHONPYCACHEPREFIX
+GUARDS="${GUARDS:-$REPO_ROOT/scripts/safe_deploy_guards.py}"; export GUARDS
+EXPECT_GUARDS="${EXPECT_GUARDS:?set from Permission A assignment}"
+[ -f "$GUARDS" ] || exit 1
+[ ! -e "$REPO_ROOT/scripts/safe_deploy_guards" ] || exit 1
+[ "$(sha256sum "$GUARDS" | awk '{print $1}')" = "$EXPECT_GUARDS" ] || exit 1
+rm -rf "$REPO_ROOT/scripts/__pycache__"
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 case "$BK" in ""|"/"|"."|"..") echo "BK unsafe"; exit 1;; esac
 case "$DEPLOY_ROOT" in ""|"/"|"."|"..") echo "DEPLOY_ROOT unsafe"; exit 1;; esac
@@ -145,7 +161,7 @@ export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
 BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
   SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
   AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
-  python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+  python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 touch "$BK/BEFORE_MARKER"
 cp -a "$AGENT_REAL/profile.json" "$BK/"
 cp -a "$WF/skill-1791618014068/SKILL.md" "$BK/OPT_SKILL.md"
@@ -167,6 +183,14 @@ set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe: <$WF>"; exit 1;; esac
+export PYTHONDONTWRITEBYTECODE=1
+PYTHONPYCACHEPREFIX=$(mktemp -d); export PYTHONPYCACHEPREFIX
+GUARDS="${GUARDS:-$REPO_ROOT/scripts/safe_deploy_guards.py}"; export GUARDS
+EXPECT_GUARDS="${EXPECT_GUARDS:?set from Permission A assignment}"
+[ -f "$GUARDS" ] || exit 1
+[ ! -e "$REPO_ROOT/scripts/safe_deploy_guards" ] || exit 1
+[ "$(sha256sum "$GUARDS" | awk '{print $1}')" = "$EXPECT_GUARDS" ] || exit 1
+rm -rf "$REPO_ROOT/scripts/__pycache__"
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 case "$BK" in ""|"/"|"."|"..") echo "BK unsafe"; exit 1;; esac
 export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
@@ -174,7 +198,7 @@ export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
 BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
   SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
   AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
-  python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+  python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 set -o noclobber
 (
   find "$WF" "$AGENT_REAL" -type f \
@@ -219,30 +243,41 @@ set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
+export PYTHONDONTWRITEBYTECODE=1
+PYTHONPYCACHEPREFIX=$(mktemp -d); export PYTHONPYCACHEPREFIX
+GUARDS="${GUARDS:-$REPO_ROOT/scripts/safe_deploy_guards.py}"; export GUARDS
+EXPECT_GUARDS="${EXPECT_GUARDS:?set from Permission A assignment}"
+[ -f "$GUARDS" ] || exit 1
+[ ! -e "$REPO_ROOT/scripts/safe_deploy_guards" ] || exit 1
+[ "$(sha256sum "$GUARDS" | awk '{print $1}')" = "$EXPECT_GUARDS" ] || exit 1
+rm -rf "$REPO_ROOT/scripts/__pycache__"
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
   AGENT_DATA_LOGICAL REPO_ROOT
 BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
   SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
   AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
-  python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+  python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 CLI_ID=$(cat "$BK/CLI_SKILL_ID.txt")
 CLI_PATH_RAW=$(cat "$BK/CLI_SKILL_PATH.txt")
 test -n "$CLI_ID" && test -n "$CLI_PATH_RAW" || { echo "empty id/path"; exit 1; }
 
 # BL8: любой ненулевой python → exit 1; «4b ok» только после успеха
 # N34: path-check требует существования пути (strict)
-python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" path-check \
+python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" path-check \
   "$CLI_PATH_RAW" "$SKILL_ROOT_LOGICAL" "$AGENT_DATA_LOGICAL" \
   > "$BK/CLI_SKILL_PATH_REAL.txt" || exit 1
 CLI_PATH=$(cat "$BK/CLI_SKILL_PATH_REAL.txt")
 test -d "$CLI_PATH" || { echo "CLI_PATH not a directory"; exit 1; }
 
 # existed before — Path-сравнение (N37/N40), не prefix-grep по строке
-BK="$BK" CLI_PATH="$CLI_PATH" REPO_ROOT="$REPO_ROOT" python3 -B - <<'PY' || exit 1
-import os, pathlib, sys
-sys.path.insert(0, os.path.join(os.environ["REPO_ROOT"], "scripts"))
-import safe_deploy_guards as g
+BK="$BK" CLI_PATH="$CLI_PATH" REPO_ROOT="$REPO_ROOT" GUARDS="$GUARDS" python3 -I -B - <<'PY' || exit 1
+import importlib.util, os, pathlib, sys
+_guards = os.environ["GUARDS"]
+_spec = importlib.util.spec_from_file_location("safe_deploy_guards", _guards)
+assert _spec and _spec.loader
+g = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(g)
 cli = pathlib.Path(g.canonicalize_path(os.environ["CLI_PATH"]))
 before = g.load_manifest(pathlib.Path(os.environ["BK"]) / "MANIFEST_BEFORE.txt")
 for p in before:
@@ -275,18 +310,26 @@ set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" \
   "${REPO_ROOT:?}" "${CLI_PATH:?}"
+export PYTHONDONTWRITEBYTECODE=1
+PYTHONPYCACHEPREFIX=$(mktemp -d); export PYTHONPYCACHEPREFIX
+GUARDS="${GUARDS:-$REPO_ROOT/scripts/safe_deploy_guards.py}"; export GUARDS
+EXPECT_GUARDS="${EXPECT_GUARDS:?set from Permission A assignment}"
+[ -f "$GUARDS" ] || exit 1
+[ ! -e "$REPO_ROOT/scripts/safe_deploy_guards" ] || exit 1
+[ "$(sha256sum "$GUARDS" | awk '{print $1}')" = "$EXPECT_GUARDS" ] || exit 1
+rm -rf "$REPO_ROOT/scripts/__pycache__"
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
   AGENT_DATA_LOGICAL REPO_ROOT CLI_PATH
 BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
   SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
   AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
-  python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+  python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 test -d "$CLI_PATH" || exit 1
 REPO_SKILL="$REPO_ROOT/docs/analyst_skill_patch/cli-analyst-bundle/SKILL.md"
 LIVE_SKILL="$CLI_PATH/SKILL.md"
 test -f "$LIVE_SKILL" || { echo "live SKILL.md missing"; exit 1; }
-python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" skill-compare \
+python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" skill-compare \
   "$REPO_SKILL" "$LIVE_SKILL" || exit 1
 ```
 
@@ -309,13 +352,21 @@ set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
+export PYTHONDONTWRITEBYTECODE=1
+PYTHONPYCACHEPREFIX=$(mktemp -d); export PYTHONPYCACHEPREFIX
+GUARDS="${GUARDS:-$REPO_ROOT/scripts/safe_deploy_guards.py}"; export GUARDS
+EXPECT_GUARDS="${EXPECT_GUARDS:?set from Permission A assignment}"
+[ -f "$GUARDS" ] || exit 1
+[ ! -e "$REPO_ROOT/scripts/safe_deploy_guards" ] || exit 1
+[ "$(sha256sum "$GUARDS" | awk '{print $1}')" = "$EXPECT_GUARDS" ] || exit 1
+rm -rf "$REPO_ROOT/scripts/__pycache__"
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
   AGENT_DATA_LOGICAL REPO_ROOT
 BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
   SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
   AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
-  python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+  python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 test -f "$BK/MANIFEST_BEFORE.txt" || { echo "MANIFEST_BEFORE missing"; exit 1; }
 CLI_PATH=$(cat "$BK/CLI_SKILL_PATH_REAL.txt")
 test -n "$CLI_PATH" || exit 1
@@ -333,10 +384,13 @@ test -n "$CLI_PATH" || exit 1
     "$(realpath -e /workspace/invest/portfolio/optimizer/config/optimizer.yaml)"
 ) > "$BK/MANIFEST_AFTER.txt" || exit 1
 
-BK="$BK" CLI_PATH="$CLI_PATH" REPO_ROOT="$REPO_ROOT" python3 -B - <<'PY' || exit 1
-import os, pathlib, sys
-sys.path.insert(0, os.path.join(os.environ["REPO_ROOT"], "scripts"))
-import safe_deploy_guards as g
+BK="$BK" CLI_PATH="$CLI_PATH" REPO_ROOT="$REPO_ROOT" GUARDS="$GUARDS" python3 -I -B - <<'PY' || exit 1
+import importlib.util, os, pathlib, sys
+_guards = os.environ["GUARDS"]
+_spec = importlib.util.spec_from_file_location("safe_deploy_guards", _guards)
+assert _spec and _spec.loader
+g = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(g)
 bk = pathlib.Path(os.environ["BK"])
 cli = pathlib.Path(os.environ["CLI_PATH"]).resolve()
 # allow-list через canonicalize (учитывает symlink agent-data):
@@ -389,6 +443,14 @@ set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
+export PYTHONDONTWRITEBYTECODE=1
+PYTHONPYCACHEPREFIX=$(mktemp -d); export PYTHONPYCACHEPREFIX
+GUARDS="${GUARDS:-$REPO_ROOT/scripts/safe_deploy_guards.py}"; export GUARDS
+EXPECT_GUARDS="${EXPECT_GUARDS:?set from Permission A assignment}"
+[ -f "$GUARDS" ] || exit 1
+[ ! -e "$REPO_ROOT/scripts/safe_deploy_guards" ] || exit 1
+[ "$(sha256sum "$GUARDS" | awk '{print $1}')" = "$EXPECT_GUARDS" ] || exit 1
+rm -rf "$REPO_ROOT/scripts/__pycache__"
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 case "$BK" in ""|"/"|"."|"..") echo "BK unsafe"; exit 1;; esac
 export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
@@ -396,7 +458,7 @@ export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
 BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
   SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
   AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
-  python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
+  python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 1
 cp -a "$BK/profile.json" "$AGENT_REAL/profile.json"
 cp -a "$BK/OPT_SKILL.md" "$WF/skill-1791618014068/SKILL.md"
 cp -a "$BK/POS_SKILL.md" "$WF/skill-1791618006478/SKILL.md"
@@ -414,13 +476,21 @@ set -euo pipefail
 : "${BK:?}" "${WF:?}" "${AGENT_REAL:?}" "${SKILL_ROOT_LOGICAL:?}" \
   "${AGENT_DATA_LOGICAL:?}" "${SKILL_ROOT_REAL:?}" "${DEPLOY_ROOT:?}" "${REPO_ROOT:?}"
 case "$WF" in ""|"/"|"."|"..") echo "WF unsafe"; exit 1;; esac
+export PYTHONDONTWRITEBYTECODE=1
+PYTHONPYCACHEPREFIX=$(mktemp -d); export PYTHONPYCACHEPREFIX
+GUARDS="${GUARDS:-$REPO_ROOT/scripts/safe_deploy_guards.py}"; export GUARDS
+EXPECT_GUARDS="${EXPECT_GUARDS:?set from Permission A assignment}"
+[ -f "$GUARDS" ] || exit 1
+[ ! -e "$REPO_ROOT/scripts/safe_deploy_guards" ] || exit 1
+[ "$(sha256sum "$GUARDS" | awk '{print $1}')" = "$EXPECT_GUARDS" ] || exit 1
+rm -rf "$REPO_ROOT/scripts/__pycache__"
 case "$AGENT_REAL" in ""|"/"|"."|"..") echo "AGENT_REAL unsafe"; exit 1;; esac
 export BK DEPLOY_ROOT WF AGENT_REAL SKILL_ROOT_LOGICAL SKILL_ROOT_REAL \
   AGENT_DATA_LOGICAL REPO_ROOT
 BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
   SKILL_ROOT_LOGICAL="$SKILL_ROOT_LOGICAL" SKILL_ROOT_REAL="$SKILL_ROOT_REAL" \
   AGENT_DATA_LOGICAL="$AGENT_DATA_LOGICAL" REPO_ROOT="$REPO_ROOT" \
-  python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 2
+  python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" validate-env --need-repo || exit 2
 if [ ! -f "$BK/CLI_SKILL_ID.txt" ] && [ ! -f "$BK/CLI_SKILL_PATH.txt" ]; then
   echo "no create record — skip skill delete"; exit 0
 fi
@@ -430,13 +500,16 @@ if [ ! -s "$BK/CLI_SKILL_ID.txt" ] || [ ! -s "$BK/CLI_SKILL_PATH.txt" ] \
 fi
 CLI_ID=$(cat "$BK/CLI_SKILL_ID.txt")
 CLI_PATH_RAW=$(cat "$BK/CLI_SKILL_PATH.txt")
-CLI_PATH=$(python3 -B "$REPO_ROOT/scripts/safe_deploy_guards.py" path-check \
+CLI_PATH=$(python3 -I -B "$REPO_ROOT/scripts/safe_deploy_guards.py" path-check \
   "$CLI_PATH_RAW" "$SKILL_ROOT_LOGICAL" "$AGENT_DATA_LOGICAL") || exit 2
 # N36: path не в MANIFEST_BEFORE (Path-сравнение)
-BK="$BK" CLI_PATH="$CLI_PATH" REPO_ROOT="$REPO_ROOT" python3 -B - <<'PY' || exit 2
-import os, pathlib, sys
-sys.path.insert(0, os.path.join(os.environ["REPO_ROOT"], "scripts"))
-import safe_deploy_guards as g
+BK="$BK" CLI_PATH="$CLI_PATH" REPO_ROOT="$REPO_ROOT" GUARDS="$GUARDS" python3 -I -B - <<'PY' || exit 2
+import importlib.util, os, pathlib, sys
+_guards = os.environ["GUARDS"]
+_spec = importlib.util.spec_from_file_location("safe_deploy_guards", _guards)
+assert _spec and _spec.loader
+g = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(g)
 cli = pathlib.Path(g.canonicalize_path(os.environ["CLI_PATH"]))
 before = g.load_manifest(pathlib.Path(os.environ["BK"]) / "MANIFEST_BEFORE.txt")
 for p in before:
