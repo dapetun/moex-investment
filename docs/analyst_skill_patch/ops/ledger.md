@@ -13,11 +13,12 @@
 | — (N45+M4-9) | cur-20261015-1730 | — | 9a701a7 | 1710 | submitted | Parent agents/ + integrity M4-M9 after REJECT@4edde39. |
 | — (N39 hashes) | cur-20261015-1745 | — | a813540 | 1730 | rejected | Pin 9 blocks; REJECT A1–A18 вне pin (result a813540). |
 | — (N39 doc pin) | cur-20261017-2015 | — | efd5d7e | 1745 | accepted_notes | document+fences pin; ACCEPT WITH NOTES N46–N49. |
-| — (N46–N49) | cur-20261017-2045 | — | (tip) | 2015 | submitted | Restore warnings, check-hashes §0, reject CR, ledger UTF-8. |
+| — (N46–N49) | cur-20261017-2045 | — | 1f109a8 | 2015 | rejected | N49 read_text CR; N47 fixture CRLF + comment-only expect. |
+| — (N47/N49 fix) | cur-20261017-2115 | — | (tip) | 2045 | submitted | raw-bytes read; EXPECT_DOC/FIX; .gitattributes eol=lf. |
 
 ## Pin values (N47)
 
-Сверять до Permission A apply (tip после N46–N49):
+Сверять до Permission A apply; передавать как EXPECT_DOC / EXPECT_FIX каждому исполнителю:
 
-- `SAFE_DEPLOY.md` `document_sha256`: `af72f1b3354bd40d9732ba4c39125678aab7683b6e51498e2c0c006684162f86`
-- `tests/fixtures/safe_deploy_block_hashes.json` sha256: `50d5be251db7d1ec847e5404bb1b87832b8e4f654b7fb079c016e29a128be1f0`
+- SAFE_DEPLOY.md document_sha256: d27360604cdf77a8356d6658b8a15b34affe53441c15f5bf865979bc70c336db
+- tests/fixtures/safe_deploy_block_hashes.json sha256: 736e9b7b774f0a96ca81afb3945a6cdfa2a7bd4d94257361992238fa6c95dca7

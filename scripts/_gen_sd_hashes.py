@@ -11,7 +11,9 @@ import safe_deploy_guards as g  # noqa: E402
 
 
 def main() -> None:
-    md = (ROOT / "docs/analyst_skill_patch/SAFE_DEPLOY.md").read_text(encoding="utf-8")
+    md = g.read_text_no_universal_newlines(
+        ROOT / "docs/analyst_skill_patch/SAFE_DEPLOY.md"
+    )
     blocks = g.critical_block_hashes(md)
     fences = g.fence_hashes(md)
     doc = g.document_sha256(md)

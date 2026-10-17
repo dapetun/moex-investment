@@ -78,11 +78,14 @@ BK="$BK" DEPLOY_ROOT="$DEPLOY_ROOT" WF="$WF" AGENT_REAL="$AGENT_REAL" \
 ```bash
 set -euo pipefail
 REPO_ROOT="${REPO_ROOT:?}"
+# N47: эталон из ledger § Pin values — передавать явно каждому исполнителю (не из SD).
+EXPECT_DOC="${EXPECT_DOC:?set document_sha256 from ops/ledger.md Pin values}"
+EXPECT_FIX="${EXPECT_FIX:?set fixture sha256 from ops/ledger.md Pin values}"
 SD="$REPO_ROOT/docs/analyst_skill_patch/SAFE_DEPLOY.md"
 FIX="$REPO_ROOT/tests/fixtures/safe_deploy_block_hashes.json"
-python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" check-hashes "$SD" "$FIX" || exit 1
-# Сверить document_sha256 и sha256(FIX) с ops/ledger.md § Pin values (N47).
-# Несовпадение — стоп; не перегенерировать fixture во время deploy.
+python3 "$REPO_ROOT/scripts/safe_deploy_guards.py" check-hashes "$SD" "$FIX" \
+  --expect-document "$EXPECT_DOC" --expect-fixture "$EXPECT_FIX" || exit 1
+# Не перегенерировать fixture во время deploy.
 ```
 
 ## 1. Проверка актуальных версий

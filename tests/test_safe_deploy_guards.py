@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -396,9 +397,27 @@ def test_n39_document_pin_catches_a1_a18_outside_critical_blocks() -> None:
     with pytest.raises(SystemExit, match="document hash"):
         g.assert_safe_deploy_block_hashes(a18)
 
-    # N49: CR в документе — отказ (не коллизия с LF)
-    with pytest.raises(SystemExit, match=r"\\\\r|CR"):
-        g.document_sha256(md.replace("\n", "\r\n", 1))
+    # N49: CR в файле — отказ на read (не universal newlines Path.read_text)
+    evil_path = Path(__file__).resolve().parent / "_tmp_sd_cr.md"
+    evil_path.write_bytes(b"line1\r\nline2\n")
+    try:
+        with pytest.raises(SystemExit, match=r"CR"):
+            g.read_text_no_universal_newlines(evil_path)
+    finally:
+        evil_path.unlink(missing_ok=True)
+
+    # N47: expect-document / expect-fixture mismatch → rc≠0
+    with pytest.raises(SystemExit, match="expect-document"):
+        g.assert_safe_deploy_block_hashes(md, expect_document="0" * 64)
+    fix = ROOT / "tests" / "fixtures" / "safe_deploy_block_hashes.json"
+    with pytest.raises(SystemExit, match="expect-fixture"):
+        g.assert_safe_deploy_block_hashes(md, fix, expect_fixture="0" * 64)
+    g.assert_safe_deploy_block_hashes(
+        md,
+        fix,
+        expect_document=g.document_sha256(md),
+        expect_fixture=hashlib.sha256(fix.read_bytes()).hexdigest(),
+    )
 
 
 def test_n39_mutations_m1_m4_detected() -> None:

@@ -285,6 +285,14 @@ def normalize_bash_block(text: str) -> str:
     return "\n".join(ln.rstrip() for ln in text.splitlines()).strip() + "\n"
 
 
+def read_text_no_universal_newlines(path: Path) -> str:
+    """Читать файл без universal newlines (N49: CR не превращается в LF)."""
+    data = path.read_bytes()
+    if b"\r" in data:
+        raise SystemExit(f"{path}: contains CR (\\r); refuse (N49)")
+    return data.decode("utf-8")
+
+
 def document_sha256(md_text: str) -> str:
     """Полный sha256 текста SAFE_DEPLOY.md (закрывает вставки вне pin-блоков).
 
@@ -320,9 +328,17 @@ def critical_block_hashes(md_text: str) -> dict[str, str]:
 
 
 def assert_safe_deploy_block_hashes(
-    md_text: str, expected_path: Path | None = None
+    md_text: str,
+    expected_path: Path | None = None,
+    *,
+    expect_document: str | None = None,
+    expect_fixture: str | None = None,
 ) -> None:
-    """Pin всего документа + всех fences + именованных блоков (N39 / A1–A18)."""
+    """Pin всего документа + всех fences + именованных блоков (N39 / A1–A18).
+
+    N47: ``expect_document`` / ``expect_fixture`` — внешний эталон (ledger/env);
+    при расхождении rc≠0 (не комментарий).
+    """
 
     if expected_path is None:
         expected_path = (
@@ -331,7 +347,11 @@ def assert_safe_deploy_block_hashes(
             / "fixtures"
             / "safe_deploy_block_hashes.json"
         )
-    expected = json.loads(expected_path.read_text(encoding="utf-8"))
+    fix_bytes = expected_path.read_bytes()
+    if b"\r" in fix_bytes:
+        raise SystemExit(f"{expected_path}: fixture contains CR (\\r); refuse (N49)")
+    expected = json.loads(fix_bytes.decode("utf-8"))
+    fix_sha = hashlib.sha256(fix_bytes).hexdigest()
 
     doc = document_sha256(md_text)
     want_doc = expected.get("document_sha256")
@@ -340,6 +360,14 @@ def assert_safe_deploy_block_hashes(
     if doc != want_doc:
         raise SystemExit(
             f"SAFE_DEPLOY document hash drift: got {doc} want {want_doc}"
+        )
+    if expect_document is not None and doc != expect_document:
+        raise SystemExit(
+            f"expect-document mismatch: got {doc} want {expect_document}"
+        )
+    if expect_fixture is not None and fix_sha != expect_fixture:
+        raise SystemExit(
+            f"expect-fixture mismatch: got {fix_sha} want {expect_fixture}"
         )
 
     fences = fence_hashes(md_text)
@@ -441,7 +469,8 @@ def main(argv: list[str]) -> int:
             "       safe_deploy_guards.py canon PATH\n"
             "       safe_deploy_guards.py validate-env [--need-repo]\n"
             "       safe_deploy_guards.py extract-steps SAFE_DEPLOY.md\n"
-            "       safe_deploy_guards.py check-hashes SAFE_DEPLOY.md [FIXTURE.json]",
+            "       safe_deploy_guards.py check-hashes SAFE_DEPLOY.md [FIXTURE.json]\n"
+            "         [--expect-document HEX] [--expect-fixture HEX]",
             file=sys.stderr,
         )
         return 2
@@ -471,9 +500,32 @@ def main(argv: list[str]) -> int:
         return 0
     if cmd == "check-hashes":
         md_path = Path(argv[2])
-        fixture = Path(argv[3]) if len(argv) > 3 else None
-        md = md_path.read_text(encoding="utf-8")
-        assert_safe_deploy_block_hashes(md, fixture)
+        rest = argv[3:]
+        fixture: Path | None = None
+        expect_document: str | None = None
+        expect_fixture: str | None = None
+        i = 0
+        while i < len(rest):
+            if rest[i] == "--expect-document" and i + 1 < len(rest):
+                expect_document = rest[i + 1]
+                i += 2
+                continue
+            if rest[i] == "--expect-fixture" and i + 1 < len(rest):
+                expect_fixture = rest[i + 1]
+                i += 2
+                continue
+            if not rest[i].startswith("-") and fixture is None:
+                fixture = Path(rest[i])
+                i += 1
+                continue
+            raise SystemExit(f"check-hashes: bad arg {rest[i]!r}")
+        md = read_text_no_universal_newlines(md_path)
+        assert_safe_deploy_block_hashes(
+            md,
+            fixture,
+            expect_document=expect_document,
+            expect_fixture=expect_fixture,
+        )
         doc = document_sha256(md)
         fix_path = fixture or (
             Path(__file__).resolve().parents[1]
