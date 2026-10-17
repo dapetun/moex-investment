@@ -16,8 +16,9 @@ def main() -> None:
         p = ROOT / rel
         if not p.is_file():
             raise SystemExit(f"missing {rel}")
-        data = p.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-        # pin = hash as if LF archive
+        data = p.read_bytes()
+        if b"\r" in data:
+            raise SystemExit(f"CR in {rel}: normalize to LF before pinning")
         files[rel] = md.sha256_bytes(data)
     out = {
         "note": "EXTERNAL pin for assignment — pass via --expect-json outside PKG",
