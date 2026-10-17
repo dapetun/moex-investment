@@ -85,6 +85,8 @@ def max_sharpe_portfolio(
         "return": portfolio_return(weights, mean_returns),
         "volatility": portfolio_volatility(weights, cov_matrix),
         "sharpe": sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate),
+        "success": bool(result.success),
+        "message": str(result.message),
     }
 
 
@@ -131,6 +133,8 @@ def min_variance_portfolio(
         "return": portfolio_return(weights, mean_returns),
         "volatility": portfolio_volatility(weights, cov_matrix),
         "sharpe": sharpe_ratio(weights, mean_returns, cov_matrix),
+        "success": bool(result.success),
+        "message": str(result.message),
     }
 
 

@@ -1,0 +1,550 @@
+"""Охрана SAFE_DEPLOY Permission A: пути и содержимое skill.
+
+Используется шагами 4b/4c/6/10b в docs/analyst_skill_patch/SAFE_DEPLOY.md
+и тестами. Сам по себе live-пути box не трогает.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+_UNSAFE_EXACT = frozenset({"", "/", ".", "..", "\\", "C:\\", "c:\\"})
+
+
+def _resolve(p: Path, *, strict: bool = False) -> Path:
+    return p.expanduser().resolve(strict=strict)
+
+
+def _under(child: Path, root: Path) -> bool:
+    return child == root or root in child.parents
+
+
+def assert_safe_abs_path(label: str, raw: str, *, min_len: int = 8) -> Path:
+    """Отказ на пустых, корневых и слишком коротких путях (N43)."""
+    if raw is None or raw in _UNSAFE_EXACT:
+        raise SystemExit(f"{label} unsafe: {raw!r}")
+    p = Path(raw)
+    # абсолютный: Unix /… или Windows X:\…
+    if not p.is_absolute():
+        raise SystemExit(f"{label} must be absolute: {raw!r}")
+    s = str(p)
+    if len(s) < min_len:
+        raise SystemExit(f"{label} too short: {raw!r}")
+    # запрет «почти корень»
+    if s.rstrip("/\\") in ("", "/", "\\") or re.fullmatch(r"[A-Za-z]:\\?", s):
+        raise SystemExit(f"{label} looks like filesystem root: {raw!r}")
+    return p
+
+
+def validate_deploy_env(env: dict[str, str] | None = None, *, need_repo: bool = False) -> None:
+    """Проверить согласованность корней deploy (N43/N44 + logical↔real)."""
+    e = dict(os.environ if env is None else env)
+    for key in (
+        "BK",
+        "WF",
+        "AGENT_REAL",
+        "SKILL_ROOT_LOGICAL",
+        "SKILL_ROOT_REAL",
+        "AGENT_DATA_LOGICAL",
+        "DEPLOY_ROOT",
+    ):
+        if key not in e or e[key] == "":
+            raise SystemExit(f"missing env {key}")
+        assert_safe_abs_path(key, e[key])
+
+    bk = _resolve(Path(e["BK"]))
+    deploy = _resolve(Path(e["DEPLOY_ROOT"]))
+    if bk != deploy:
+        raise SystemExit(f"BK != DEPLOY_ROOT: {bk} vs {deploy}")
+
+    wf = _resolve(Path(e["WF"]))
+    skill_real = _resolve(Path(e["SKILL_ROOT_REAL"]))
+    if wf != skill_real:
+        raise SystemExit(f"WF != SKILL_ROOT_REAL: {wf} vs {skill_real}")
+
+    skill_logical = Path(e["SKILL_ROOT_LOGICAL"])
+    skill_from_logical = _resolve(skill_logical)
+    if skill_from_logical != skill_real:
+        raise SystemExit(
+            f"SKILL_ROOT_LOGICAL realpath mismatch: {skill_from_logical} vs {skill_real}"
+        )
+
+    agent_data_logical = Path(e["AGENT_DATA_LOGICAL"])
+    agent_data_real = _resolve(agent_data_logical)
+    agent_real = _resolve(Path(e["AGENT_REAL"]))
+    if not _under(agent_real, agent_data_real):
+        raise SystemExit(
+            f"AGENT_REAL outside AGENT_DATA tree: {agent_real} not under {agent_data_real}"
+        )
+    # N45: parent(AGENT_REAL) == AGENT_DATA_REAL/agents, имя = id Аналитика
+    _EXPECTED_AGENT_ID = "5bda2f3d-a61a-48d6-8663-2441802d68de"
+    agents_dir = agent_data_real / "agents"
+    if agent_real.parent != agents_dir:
+        raise SystemExit(
+            f"AGENT_REAL parent must be {agents_dir}, got {agent_real.parent}"
+        )
+    if agent_real.name != _EXPECTED_AGENT_ID:
+        raise SystemExit(
+            f"AGENT_REAL unexpected agent id: {agent_real.name!r} "
+            f"(want {_EXPECTED_AGENT_ID})"
+        )
+    if not _under(skill_real, agent_data_real):
+        raise SystemExit(
+            f"SKILL_ROOT_REAL outside AGENT_DATA: {skill_real} not under {agent_data_real}"
+        )
+
+    if not bk.is_dir() or not wf.is_dir() or not agent_real.is_dir():
+        raise SystemExit("BK/WF/AGENT_REAL must be existing directories")
+
+    if need_repo:
+        repo = e.get("REPO_ROOT", "")
+        if not repo:
+            raise SystemExit("missing env REPO_ROOT")
+        assert_safe_abs_path("REPO_ROOT", repo)
+        scripts = Path(repo) / "scripts"
+        if not scripts.is_dir():
+            raise SystemExit("REPO_ROOT missing scripts/")
+
+
+def assert_path_in_skill_root(
+    cli_path_raw: str,
+    skill_root_logical: str,
+    *,
+    agent_data_logical: str | None = None,
+) -> str:
+    """Вернуть realpath CLI-пути, если он остаётся под корнем skill.
+
+    Допускает штатный symlink/junction ``agent-data → sand-data``:
+    промежуточные ссылки, чей target равен agent-data/skill-root или лежит
+    **внутри** этих деревьев. Target-предки (в т.ч. ``/``) — отказ (N38).
+    Путь должен существовать (N34). Компонент ``..`` запрещён до resolve.
+    """
+    raw = Path(cli_path_raw)
+    if ".." in raw.parts:
+        raise SystemExit(f"path contains ..: {cli_path_raw}")
+
+    skill_root = Path(skill_root_logical)
+    root_real = _resolve(skill_root)
+    if agent_data_logical is None:
+        agent_data_logical = str(skill_root.parent)
+    agent_real = _resolve(Path(agent_data_logical))
+
+    try:
+        cli_real = _resolve(raw, strict=True)
+    except FileNotFoundError as e:
+        raise SystemExit(f"path does not exist: {cli_path_raw}") from e
+    if not _under(cli_real, root_real):
+        raise SystemExit(f"path outside SKILL_ROOT: {cli_real} (root={root_real})")
+
+    cur = Path(raw.anchor) if raw.anchor else Path("/")
+    parts = raw.parts[1:] if raw.is_absolute() else raw.parts
+    for part in parts:
+        cur = cur / part
+        if not cur.is_symlink():
+            continue
+        tgt = _resolve(cur)
+        under_agent = tgt == agent_real or _under(tgt, agent_real)
+        under_root = tgt == root_real or _under(tgt, root_real)
+        if not (under_agent or under_root):
+            raise SystemExit(f"symlink escape at {cur} -> {tgt}")
+    return str(cli_real)
+
+
+def canonicalize_path(path: str) -> str:
+    return str(_resolve(Path(path)))
+
+
+def split_skill_md(text: str) -> tuple[dict[str, str], str]:
+    """Разобрать SKILL.md: поля frontmatter + тело после закрывающего ---."""
+    if not text.startswith("---"):
+        raise SystemExit("skill missing opening frontmatter ---")
+    rest = text[3:]
+    end = rest.find("\n---")
+    if end < 0:
+        raise SystemExit("skill missing closing frontmatter ---")
+    fm_raw = rest[:end].strip("\n")
+    body = rest[end + 4 :].lstrip("\n")
+    fields: dict[str, str] = {}
+    key = None
+    in_block = False
+    buf: list[str] = []
+    for line in fm_raw.splitlines():
+        m = re.match(r"^([A-Za-z0-9_-]+):\s*(.*)$", line)
+        if m and not line.startswith(" "):
+            if key is not None:
+                fields[key] = "\n".join(buf).strip()
+            key = m.group(1)
+            val = m.group(2)
+            if val in (">", ">-", "|", "|-"):
+                buf = []
+                in_block = True
+            else:
+                fields[key] = val.strip().strip("'\"")
+                key = None
+                buf = []
+                in_block = False
+        elif key is not None and in_block:
+            buf.append(line.strip())
+        elif re.match(r"^\s+\S", line):
+            # N41: indented content after plain scalar (key is None) — отказ
+            raise SystemExit(f"orphan indented frontmatter line: {line!r}")
+    if key is not None:
+        fields[key] = "\n".join(buf).strip()
+    return fields, body
+
+
+def _norm_ws(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
+
+
+_ALLOWED_FM_KEYS = frozenset({"name", "description"})
+
+
+def compare_skill_md(repo_text: str, live_text: str) -> None:
+    """Отказать, если name/тело не совпали; description — по нормализации пробелов.
+
+    Подтверждённая нормализация платформы (pa-1405): ``>`` → ``>-``, перенос строк
+    в description. Тело инструкций после frontmatter — байт-в-байт.
+    Допустимы только ключи name/description (N35); лишние поля — отказ.
+    """
+    rf, rb = split_skill_md(repo_text)
+    lf, lb = split_skill_md(live_text)
+    for label, fields in (("repo", rf), ("live", lf)):
+        extra = set(fields) - _ALLOWED_FM_KEYS
+        if extra:
+            raise SystemExit(f"unexpected frontmatter keys in {label}: {sorted(extra)}")
+        missing = _ALLOWED_FM_KEYS - set(fields)
+        if missing:
+            raise SystemExit(f"missing frontmatter keys in {label}: {sorted(missing)}")
+    if rf.get("name") != lf.get("name"):
+        raise SystemExit(
+            f"skill name mismatch: repo={rf.get('name')!r} live={lf.get('name')!r}"
+        )
+    if rb != lb:
+        raise SystemExit("skill body (after frontmatter) differs from approved repo text")
+    if _norm_ws(rf.get("description", "")) != _norm_ws(lf.get("description", "")):
+        raise SystemExit(
+            "skill description semantic mismatch after whitespace normalize"
+        )
+
+
+def load_manifest(path: Path) -> dict[str, str]:
+    d: dict[str, str] = {}
+    for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        parts = line.split(None, 1)
+        if len(parts) != 2 or len(parts[0]) != 64:
+            raise SystemExit(f"bad manifest line {i}: {line!r}")
+        d[canonicalize_path(parts[1])] = parts[0]
+    return d
+
+
+_FENCE_RE = re.compile(r"^```([^\n]*)\r?\n(.*?)```", re.MULTILINE | re.DOTALL)
+
+
+def extract_bash_steps(md_text: str) -> list[str]:
+    """Извлечь fenced ```bash блоки из SAFE_DEPLOY.md (N39)."""
+    blocks: list[str] = []
+    parts = md_text.split("```bash")
+    for part in parts[1:]:
+        end = part.find("```")
+        if end < 0:
+            continue
+        blocks.append(part[:end].strip("\n"))
+    return blocks
+
+
+def extract_all_fences(md_text: str) -> list[tuple[str, str]]:
+    """Все fenced-блоки (lang, body) в порядке документа — ловит A1–A3/A15."""
+    return [(m.group(1).strip(), m.group(2)) for m in _FENCE_RE.finditer(md_text)]
+
+
+_BLOCK_PREDS = {
+    "roots_deploy": lambda b: "DEPLOY_ROOT=" in b and "STAMP=" in b and "mkdir -p" in b,
+    "roots_canon": lambda b: (
+        "AGENT_DATA_LOGICAL=/home/box/agent-data" in b
+        and "SKILL_ROOT_REAL=" in b
+        and "export BK" in b
+        and "validate-env" in b
+    ),
+    "step2": lambda b: "BEFORE_MARKER" in b,
+    "step3": lambda b: "MANIFEST_BEFORE" in b and "noclobber" in b,
+    "step4b": lambda b: "4b ok" in b,
+    "step4c": lambda b: "skill-compare" in b and "LIVE_SKILL" in b,
+    "step6": lambda b: "allowed_exact" in b and "MANIFEST_AFTER" in b,
+    "step10a": lambda b: 'cp -a "$BK/profile.json"' in b,
+    "step10b": lambda b: "refuse delete" in b and "path-check" in b,
+}
+
+
+def normalize_bash_block(text: str) -> str:
+    return "\n".join(ln.rstrip() for ln in text.splitlines()).strip() + "\n"
+
+
+def read_text_no_universal_newlines(path: Path) -> str:
+    """Читать файл без universal newlines (N49: CR не превращается в LF)."""
+    data = path.read_bytes()
+    if b"\r" in data:
+        raise SystemExit(f"{path}: contains CR (\\r); refuse (N49)")
+    return data.decode("utf-8")
+
+
+def document_sha256(md_text: str) -> str:
+    """Полный sha256 текста SAFE_DEPLOY.md (закрывает вставки вне pin-блоков).
+
+    N49/N55: любой ``\\r`` — отказ; финальный LF не добавляется (сырой текст).
+    """
+    if "\r" in md_text:
+        raise SystemExit("SAFE_DEPLOY contains CR (\\r); refuse (N49)")
+    return hashlib.sha256(md_text.encode("utf-8")).hexdigest()
+
+
+def document_sha256_path(path: Path) -> str:
+    """sha256 сырых байт файла; отказ при наличии CR (N49)."""
+    data = path.read_bytes()
+    if b"\r" in data:
+        raise SystemExit(f"{path}: contains CR (\\r); refuse (N49)")
+    return hashlib.sha256(data).hexdigest()
+
+
+def fence_hashes(md_text: str) -> list[str]:
+    """Упорядоченные sha256 всех fences (lang\\0body)."""
+    out: list[str] = []
+    for lang, body in extract_all_fences(md_text):
+        payload = f"{lang}\0{normalize_bash_block(body)}"
+        out.append(hashlib.sha256(payload.encode("utf-8")).hexdigest())
+    return out
+
+
+def critical_block_hashes(md_text: str) -> dict[str, str]:
+    """sha256 нормализованных критических bash-блоков SAFE_DEPLOY (N39 pin)."""
+    blocks = extract_bash_steps(md_text)
+    out: dict[str, str] = {}
+    for name, pred in _BLOCK_PREDS.items():
+        hits = [b for b in blocks if pred(b)]  # type: ignore[operator]
+        if len(hits) != 1:
+            raise SystemExit(f"{name}: expected 1 block, got {len(hits)}")
+        norm = normalize_bash_block(hits[0])
+        out[name] = hashlib.sha256(norm.encode("utf-8")).hexdigest()
+    return out
+
+
+def assert_safe_deploy_block_hashes(
+    md_text: str,
+    expected_path: Path | None = None,
+    *,
+    expect_document: str | None = None,
+    expect_fixture: str | None = None,
+) -> None:
+    """Pin всего документа + всех fences + именованных блоков (N39 / A1–A18).
+
+    N47: ``expect_document`` / ``expect_fixture`` — внешний эталон (ledger/env);
+    при расхождении rc≠0 (не комментарий).
+    """
+
+    if expected_path is None:
+        expected_path = (
+            Path(__file__).resolve().parents[1]
+            / "tests"
+            / "fixtures"
+            / "safe_deploy_block_hashes.json"
+        )
+    fix_bytes = expected_path.read_bytes()
+    if b"\r" in fix_bytes:
+        raise SystemExit(f"{expected_path}: fixture contains CR (\\r); refuse (N49)")
+    expected = json.loads(fix_bytes.decode("utf-8"))
+    fix_sha = hashlib.sha256(fix_bytes).hexdigest()
+
+    doc = document_sha256(md_text)
+    want_doc = expected.get("document_sha256")
+    if not want_doc:
+        raise SystemExit("fixture missing document_sha256")
+    if doc != want_doc:
+        raise SystemExit(
+            f"SAFE_DEPLOY document hash drift: got {doc} want {want_doc}"
+        )
+    if expect_document is not None and doc != expect_document:
+        raise SystemExit(
+            f"expect-document mismatch: got {doc} want {expect_document}"
+        )
+    if expect_fixture is not None and fix_sha != expect_fixture:
+        raise SystemExit(
+            f"expect-fixture mismatch: got {fix_sha} want {expect_fixture}"
+        )
+
+    fences = fence_hashes(md_text)
+    want_fences = expected.get("fences")
+    if want_fences is None:
+        raise SystemExit("fixture missing fences")
+    if len(fences) != len(want_fences):
+        raise SystemExit(
+            f"fence count drift: got {len(fences)} want {len(want_fences)}"
+        )
+    if fences != want_fences:
+        raise SystemExit("SAFE_DEPLOY fence hash drift (order or content)")
+
+    want_blocks = expected["blocks"]
+    actual = critical_block_hashes(md_text)
+    if set(actual) != set(want_blocks):
+        raise SystemExit(
+            f"block set mismatch: extra={set(actual)-set(want_blocks)} "
+            f"missing={set(want_blocks)-set(actual)}"
+        )
+    bad = {k: (actual[k], want_blocks[k]) for k in actual if actual[k] != want_blocks[k]}
+    if bad:
+        raise SystemExit(f"SAFE_DEPLOY block hash drift: {sorted(bad)}")
+
+
+def assert_safe_deploy_integrity(md_text: str) -> None:
+    """Структурная целостность SAFE_DEPLOY: ловит мутации M1–M4 (N39)."""
+    blocks = extract_bash_steps(md_text)
+    if len(blocks) < 6:
+        raise SystemExit(f"too few bash blocks: {len(blocks)}")
+
+    def find_one(pred, label: str) -> str:
+        for b in blocks:
+            if pred(b):
+                return b
+        raise SystemExit(f"missing bash block: {label}")
+
+    step2 = find_one(lambda b: "BEFORE_MARKER" in b, "step2")
+    step3 = find_one(lambda b: "MANIFEST_BEFORE" in b and "noclobber" in b, "step3")
+    step4b = find_one(lambda b: "4b ok" in b, "step4b")
+    step6 = find_one(lambda b: "allowed_exact" in b and "MANIFEST_AFTER" in b, "step6")
+    step10a = find_one(lambda b: 'cp -a "$BK/profile.json"' in b, "step10a")
+    step10b = find_one(
+        lambda b: "path existed before deploy — refuse delete" in b
+        or "path existed before deploy - refuse delete" in b
+        or ("refuse delete" in b and "path-check" in b),
+        "step10b",
+    )
+
+    _ALLOWLIST_EXACT = (
+        "/home/box/agent-data/agents/5bda2f3d-a61a-48d6-8663-2441802d68de/profile.json",
+        "/home/box/agent-data/workflows/skill-1791618014068/SKILL.md",
+        "/home/box/agent-data/workflows/skill-1791618006478/SKILL.md",
+        "/home/box/agent-data/workflows/skill-1791617999761/SKILL.md",
+        "/workspace/invest/portfolio/analysis_spec.md",
+    )
+
+    for label, block in (
+        ("step2", step2),
+        ("step3", step3),
+        ("step4b", step4b),
+        ("step6", step6),
+        ("step10a", step10a),
+        ("step10b", step10b),
+    ):
+        if not block.lstrip().startswith("set -euo pipefail"):
+            raise SystemExit(f"{label} must start with set -euo pipefail")
+        if "validate-env" not in block:
+            raise SystemExit(f"{label} missing validate-env")
+        if "export BK" not in block:
+            raise SystemExit(f"{label} missing export BK (M5)")
+        if 'BK="$BK"' not in block:
+            raise SystemExit(f"{label} missing BL11 env prefix BK=")
+        if not re.search(r"validate-env[^\n]*\|\|\s*exit\s+[12]", block):
+            raise SystemExit(f"{label} validate-env must use || exit 1|2 (not || true)")
+        if 'case "$AGENT_REAL"' not in block:
+            raise SystemExit(f"{label} missing case AGENT_REAL")
+        case_body = block.split('case "$AGENT_REAL"', 1)[1].split("esac", 1)[0]
+        if '"/"' not in case_body:
+            raise SystemExit(f"{label} AGENT_REAL case must reject /")
+
+    if not re.search(r"path-check[\s\S]{0,200}\|\|\s*exit\s+1", step4b):
+        raise SystemExit("step4b path-check missing || exit 1 (BL8)")
+    # M4: allowlist — ровно 5 путей, без лишних skill-*
+    paths = re.findall(r'g\.canonicalize_path\("([^"]+)"\)', step6)
+    if tuple(paths) != _ALLOWLIST_EXACT:
+        raise SystemExit(
+            f"step6 allowlist mismatch: got {paths!r} want {list(_ALLOWLIST_EXACT)!r}"
+        )
+    if "before.get(f) != h" not in step6:
+        raise SystemExit("step6 missing before.get(f) != h check (M8)")
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2:
+        print(
+            "usage: safe_deploy_guards.py path-check RAW ROOT [AGENT_DATA]\n"
+            "       safe_deploy_guards.py skill-compare REPO_SKILL LIVE_SKILL\n"
+            "       safe_deploy_guards.py canon PATH\n"
+            "       safe_deploy_guards.py validate-env [--need-repo]\n"
+            "       safe_deploy_guards.py extract-steps SAFE_DEPLOY.md\n"
+            "       safe_deploy_guards.py check-hashes SAFE_DEPLOY.md [FIXTURE.json]\n"
+            "         [--expect-document HEX] [--expect-fixture HEX]",
+            file=sys.stderr,
+        )
+        return 2
+    cmd = argv[1]
+    if cmd == "path-check":
+        agent = argv[4] if len(argv) > 4 else None
+        print(assert_path_in_skill_root(argv[2], argv[3], agent_data_logical=agent))
+        return 0
+    if cmd == "skill-compare":
+        compare_skill_md(
+            Path(argv[2]).read_text(encoding="utf-8"),
+            Path(argv[3]).read_text(encoding="utf-8"),
+        )
+        print("skill content ok")
+        return 0
+    if cmd == "canon":
+        print(canonicalize_path(argv[2]))
+        return 0
+    if cmd == "validate-env":
+        need_repo = "--need-repo" in argv[2:]
+        validate_deploy_env(need_repo=need_repo)
+        print("deploy env ok")
+        return 0
+    if cmd == "extract-steps":
+        blocks = extract_bash_steps(Path(argv[2]).read_text(encoding="utf-8"))
+        print(len(blocks))
+        return 0
+    if cmd == "check-hashes":
+        md_path = Path(argv[2])
+        rest = argv[3:]
+        fixture: Path | None = None
+        expect_document: str | None = None
+        expect_fixture: str | None = None
+        i = 0
+        while i < len(rest):
+            if rest[i] == "--expect-document" and i + 1 < len(rest):
+                expect_document = rest[i + 1]
+                i += 2
+                continue
+            if rest[i] == "--expect-fixture" and i + 1 < len(rest):
+                expect_fixture = rest[i + 1]
+                i += 2
+                continue
+            if not rest[i].startswith("-") and fixture is None:
+                fixture = Path(rest[i])
+                i += 1
+                continue
+            raise SystemExit(f"check-hashes: bad arg {rest[i]!r}")
+        md = read_text_no_universal_newlines(md_path)
+        assert_safe_deploy_block_hashes(
+            md,
+            fixture,
+            expect_document=expect_document,
+            expect_fixture=expect_fixture,
+        )
+        doc = document_sha256(md)
+        fix_path = fixture or (
+            Path(__file__).resolve().parents[1]
+            / "tests"
+            / "fixtures"
+            / "safe_deploy_block_hashes.json"
+        )
+        fix_sha = hashlib.sha256(fix_path.read_bytes()).hexdigest()
+        print(f"SAFE_DEPLOY block hashes ok document_sha256={doc} fixture_sha256={fix_sha}")
+        return 0
+    print(f"unknown command {cmd}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

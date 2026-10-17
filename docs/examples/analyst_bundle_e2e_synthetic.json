@@ -1,0 +1,360 @@
+{
+  "schema": "moex_analyst_bundle.v1",
+  "generated_at": "2026-10-11T14:05:36.508346+00:00",
+  "synthetic": true,
+  "disclaimer": "Синтетические/тестовые данные. Не является инвестиционной рекомендацией по реальному портфелю. Количественные поля должны совпадать с артефактами CLI; качественные оценки радара — отдельный блок без пересчёта ожидаемой доходности.",
+  "holdings": {
+    "path": "<local>/data/portfolio/holdings.json",
+    "file_status": "ok",
+    "as_of": "2026-10-10",
+    "cash": 0.0,
+    "positions": [
+      {
+        "ticker": "AAA",
+        "note": "synthetic account A; synthetic account B",
+        "shares": 180.0,
+        "weight": 0.38,
+        "isin": "RU00AAA00001",
+        "secid": "AAA",
+        "board": "TQBR",
+        "security_type": "share",
+        "accounts": [
+          {
+            "account_label": "broker_a",
+            "weight": 0.2,
+            "shares": 100.0,
+            "market_value": 100000.0
+          },
+          {
+            "account_label": "broker_b",
+            "weight": 0.18,
+            "shares": 80.0,
+            "market_value": 90000.0
+          }
+        ],
+        "market_value": 190000.0
+      },
+      {
+        "ticker": "BBB",
+        "note": "synthetic",
+        "shares": 50.0,
+        "weight": 0.25,
+        "isin": "RU00BBB00002",
+        "secid": "BBB",
+        "board": "TQBR",
+        "security_type": "share",
+        "account_label": "broker_a",
+        "market_value": 125000.0
+      },
+      {
+        "ticker": "CCC",
+        "note": "synthetic",
+        "shares": 200.0,
+        "weight": 0.37,
+        "isin": "RU00CCC00003",
+        "secid": "CCC",
+        "board": "TQBR",
+        "security_type": "share",
+        "account_label": "broker_a",
+        "market_value": 185000.0
+      }
+    ],
+    "weight_sum_policy": "canonical",
+    "weight_normalized_on_load": null,
+    "weight_sum_before": null
+  },
+  "validation": {
+    "ok": true,
+    "status": "ok",
+    "last_data_date": "2026-09-23",
+    "age_days": 18,
+    "rows": 126,
+    "columns": 6,
+    "issues": [],
+    "as_of": "2026-10-11",
+    "max_staleness_days": 5,
+    "check_staleness": false,
+    "min_price_coverage": 0.8,
+    "source": "fixture",
+    "is_live_market": false,
+    "is_user_csv": false,
+    "note": "synthetic/fixture source: not treated as live market quotes; staleness check skipped",
+    "iss_enabled": false
+  },
+  "target": {
+    "path": "<local>/data/outbox/last_target.json",
+    "payload": {
+      "weights": {
+        "AAA": 0.2916171370691636,
+        "BBB": 0.20838286293083647,
+        "CCC": 0.4999999999999999
+      },
+      "tickers": [
+        "AAA",
+        "BBB",
+        "CCC"
+      ],
+      "success": true,
+      "source": "fixture",
+      "is_live_market": false
+    }
+  },
+  "compare": {
+    "needs_rebalance": true,
+    "needs_action": true,
+    "allocation_kind": "rebalance",
+    "max_abs_drift": 0.1299999999999999,
+    "min_drift": 0.05,
+    "diffs": [
+      {
+        "ticker": "AAA",
+        "current": 0.38,
+        "target": 0.2916171370691636,
+        "drift": 0.08838286293083641
+      },
+      {
+        "ticker": "BBB",
+        "current": 0.25,
+        "target": 0.20838286293083647,
+        "drift": 0.041617137069163535
+      },
+      {
+        "ticker": "CCC",
+        "current": 0.37,
+        "target": 0.4999999999999999,
+        "drift": 0.1299999999999999
+      }
+    ],
+    "tickers": [
+      "AAA",
+      "BBB",
+      "CCC"
+    ],
+    "target_path": "<local>/data/outbox/last_target.json",
+    "holdings_empty": false,
+    "target_success": true,
+    "report_json": "<local>/data/outbox/reports/20261011T140530Z-49bd0952.json",
+    "report_md": "<local>/data/outbox/reports/20261011T140530Z-49bd0952.md"
+  },
+  "events": {
+    "processed_dir": "<local>/data/processed/events_test",
+    "history_dir": "<local>/data/processed/events_history_test",
+    "history_files": 0,
+    "items": [
+      {
+        "event_id": "TEST-EV-20261011-AAA-001",
+        "ticker": "AAA",
+        "event_type": "dividend_recommendation",
+        "event_date": "2026-10-10",
+        "published_at": "2026-10-10T12:00:00+03:00",
+        "source": "synthetic-prime",
+        "url": "https://example.invalid/aaa/div-001",
+        "title": "СД рекомендовал дивиденд (СИНТЕТИКА AAA).",
+        "factual_summary": "СД рекомендовал дивиденд (СИНТЕТИКА AAA).",
+        "company": "Synthetic Issuer AAA",
+        "materiality": "medium",
+        "equity_assessment": {
+          "materiality": "medium",
+          "direction": "positive",
+          "confidence": "medium",
+          "rationale": "Синтетическая оценка для e2e."
+        },
+        "bond_assessment": null,
+        "path": "<local>/data/processed/events_test/TEST-EV-20261011-AAA-001.json"
+      },
+      {
+        "event_id": "TEST-EV-20261011-BBB-001",
+        "ticker": "BBB",
+        "event_type": "guidance_change",
+        "event_date": "2026-10-09",
+        "published_at": "2026-10-09T10:00:00+03:00",
+        "source": "synthetic-prime",
+        "url": "https://example.invalid/bbb/guide-001",
+        "title": "Компания снизила прогноз (СИНТЕТИКА BBB).",
+        "factual_summary": "Компания снизила прогноз (СИНТЕТИКА BBB).",
+        "company": "Synthetic Issuer BBB",
+        "materiality": "high",
+        "equity_assessment": {
+          "materiality": "high",
+          "direction": "negative",
+          "confidence": "high",
+          "rationale": "Синтетическое событие риска для e2e."
+        },
+        "bond_assessment": null,
+        "path": "<local>/data/processed/events_test/TEST-EV-20261011-BBB-001.json"
+      }
+    ],
+    "ingest": {
+      "accepted": 2,
+      "updated": 0,
+      "rejected": 0,
+      "duplicate_skipped": 0,
+      "stale_skipped": 0,
+      "conflict": 0,
+      "skipped_semantics": 1,
+      "partial": false,
+      "ok": true,
+      "test_mode": true,
+      "inbox": "<local>/data/inbox/events_test",
+      "processed": "<local>/data/processed/events_test",
+      "history": "<local>/data/processed/events_history_test",
+      "inbox_archive": "<local>/data/processed/inbox_archive_test",
+      "archives": [
+        "<local>/data/processed/inbox_archive_test/e2e_radar_test_batch__20261011T140531Z.json"
+      ],
+      "source_path": "<local>/tests/fixtures/e2e_radar_test_batch.json",
+      "staged_from_source": [
+        "<local>/data/inbox/events_test/e2e_radar_test_batch.json"
+      ],
+      "details": [
+        {
+          "file": "e2e_radar_test_batch.json",
+          "index": 0,
+          "event_id": "TEST-EV-20261011-AAA-001",
+          "dest": "TEST-EV-20261011-AAA-001.json",
+          "status": "accepted",
+          "event_type": "dividend_recommendation"
+        },
+        {
+          "file": "e2e_radar_test_batch.json",
+          "index": 1,
+          "event_id": "TEST-EV-20261011-BBB-001",
+          "dest": "TEST-EV-20261011-BBB-001.json",
+          "status": "accepted",
+          "event_type": "guidance_change"
+        },
+        {
+          "file": "e2e_radar_test_batch.json",
+          "index": 2,
+          "event_id": "TEST-EV-20261011-CCC-001",
+          "status": "skipped_novelty_duplicate",
+          "reason": "novelty=duplicate duplicate_of=TEST-EV-20261001-CCC-000"
+        }
+      ]
+    }
+  },
+  "runs": [
+    {
+      "run_id": "20261011T140528Z-a268ccda",
+      "path": "<local>/data/outbox/runs/20261011T140528Z-a268ccda.json",
+      "record": {
+        "run_id": "20261011T140528Z-a268ccda",
+        "command": "optimize",
+        "params": {
+          "mode": "universe",
+          "max_weight": 0.5,
+          "source": "fixture",
+          "iss_enabled": false
+        },
+        "status": "ok",
+        "started_at": "2026-10-11T14:05:28.836782+00:00",
+        "finished_at": "2026-10-11T14:05:28.909795+00:00",
+        "error": null,
+        "result": {
+          "mode": "universe",
+          "tickers": [
+            "AAA",
+            "BBB",
+            "CCC"
+          ],
+          "weights": {
+            "AAA": 0.2916171370691636,
+            "BBB": 0.20838286293083647,
+            "CCC": 0.4999999999999999
+          },
+          "return": 0.08762669939641442,
+          "volatility": 0.13785941051666922,
+          "sharpe": 0.6356236332942905,
+          "success": true,
+          "message": "Optimization terminated successfully",
+          "risk_free_rate": 0.0,
+          "max_weight": 0.5,
+          "cov_method": "ledoit_wolf",
+          "min_turnover": 0.0,
+          "source": "fixture",
+          "is_live_market": false,
+          "validation": {
+            "ok": true,
+            "status": "ok",
+            "last_data_date": "2026-09-23",
+            "age_days": 18,
+            "rows": 126,
+            "columns": 6,
+            "issues": [],
+            "as_of": "2026-10-11",
+            "max_staleness_days": 5,
+            "check_staleness": false,
+            "min_price_coverage": 0.8,
+            "source": "fixture",
+            "is_live_market": false,
+            "is_user_csv": false,
+            "note": "synthetic/fixture source: not treated as live market quotes; staleness check skipped"
+          },
+          "target_updated": true,
+          "target_path": "<local>/data/outbox/last_target.json",
+          "report_json": "<local>/data/outbox/reports/20261011T140528Z-a268ccda.json",
+          "report_md": "<local>/data/outbox/reports/20261011T140528Z-a268ccda.md"
+        }
+      }
+    },
+    {
+      "run_id": "20261011T140530Z-49bd0952",
+      "path": "<local>/data/outbox/runs/20261011T140530Z-49bd0952.json",
+      "record": {
+        "run_id": "20261011T140530Z-49bd0952",
+        "command": "compare",
+        "params": {
+          "min_drift": 0.05
+        },
+        "status": "ok",
+        "started_at": "2026-10-11T14:05:30.441574+00:00",
+        "finished_at": "2026-10-11T14:05:30.456302+00:00",
+        "error": null,
+        "result": {
+          "needs_rebalance": true,
+          "needs_action": true,
+          "allocation_kind": "rebalance",
+          "max_abs_drift": 0.1299999999999999,
+          "min_drift": 0.05,
+          "diffs": [
+            {
+              "ticker": "AAA",
+              "current": 0.38,
+              "target": 0.2916171370691636,
+              "drift": 0.08838286293083641
+            },
+            {
+              "ticker": "BBB",
+              "current": 0.25,
+              "target": 0.20838286293083647,
+              "drift": 0.041617137069163535
+            },
+            {
+              "ticker": "CCC",
+              "current": 0.37,
+              "target": 0.4999999999999999,
+              "drift": 0.1299999999999999
+            }
+          ],
+          "tickers": [
+            "AAA",
+            "BBB",
+            "CCC"
+          ],
+          "target_path": "<local>/data/outbox/last_target.json",
+          "holdings_empty": false,
+          "target_success": true,
+          "report_json": "<local>/data/outbox/reports/20261011T140530Z-49bd0952.json",
+          "report_md": "<local>/data/outbox/reports/20261011T140530Z-49bd0952.md"
+        }
+      }
+    }
+  ],
+  "notes": "E2E synthetic scenario for Portfolio Analyst one-shot handoff",
+  "analyst_instructions": [
+    "Разделяй числа CLI (weights, drift, QC) и качественные оценки радара.",
+    "Ссылайся на event_id, run_id и пути артефактов.",
+    "Не выдумывай доходности, цены и торговые рекомендации.",
+    "Явно укажи ограничения синтетических данных."
+  ]
+}

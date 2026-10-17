@@ -24,9 +24,19 @@ env/
 # Data files (generated)
 data/*.csv
 data/*.json
+data/cache/
+data/outbox/
+data/locks/
+data/inbox/events/*.json
+!data/inbox/events/*.example
+!data/inbox/events/README.md
+data/processed/
+data/portfolio/holdings.json
+
 
 # Figures (generated)
 figures/*.png
+
 
 # Testing
 .pytest_cache/

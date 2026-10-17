@@ -1,0 +1,3 @@
+docs/analyst_skill_patch/SAFE_DEPLOY.md text eol=lf
+docs/analyst_skill_patch/ops/ledger.md text eol=lf
+tests/fixtures/safe_deploy_block_hashes.json text eol=lf
