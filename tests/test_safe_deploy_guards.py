@@ -318,7 +318,7 @@ def test_n39_block_hash_detects_any_step_mutation() -> None:
     )
     g.assert_safe_deploy_block_hashes(md)
     mutated = md.replace("4b ok", "4b ok MUTATED", 1)
-    with pytest.raises(SystemExit, match="hash drift|block hash"):
+    with pytest.raises(SystemExit, match="hash drift|document hash|fence"):
         g.assert_safe_deploy_block_hashes(mutated)
     # N2-style: comment out validate-env in 10a
     blocks = g.extract_bash_steps(md)
@@ -327,13 +327,73 @@ def test_n39_block_hash_detects_any_step_mutation() -> None:
         "python3 \"$REPO_ROOT/scripts/safe_deploy_guards.py\" validate-env",
         ": # python3 \"$REPO_ROOT/scripts/safe_deploy_guards.py\" validate-env",
     )
-    with pytest.raises(SystemExit, match="hash drift|block hash|missing validate"):
+    with pytest.raises(SystemExit, match="hash drift|document hash|fence|missing validate"):
         g.assert_safe_deploy_block_hashes(md.replace(step10a, bad))
     # N6: 4c || true
     step4c = next(b for b in blocks if "skill-compare" in b and "LIVE_SKILL" in b)
     bad4c = step4c.replace("|| exit 1", "|| true")
-    with pytest.raises(SystemExit, match="hash drift|block hash"):
+    with pytest.raises(SystemExit, match="hash drift|document hash|fence"):
         g.assert_safe_deploy_block_hashes(md.replace(step4c, bad4c))
+
+
+def test_n39_document_pin_catches_a1_a18_outside_critical_blocks() -> None:
+    """A1–A3/A5/A6/A16–A18: мутации вне 9 named blocks → document/fence pin."""
+    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
+        encoding="utf-8"
+    )
+    g.assert_safe_deploy_block_hashes(md)
+    anchor = "## 4. Регистрация skill + патчи"
+    assert anchor in md
+
+    # A1: новый ```bash с rm -rf между шагами 3 и 4
+    a1 = md.replace(
+        anchor,
+        "```bash\nrm -rf \"$WF/skill-1791618014068\"\n```\n\n" + anchor,
+        1,
+    )
+    with pytest.raises(SystemExit, match="document hash|fence count"):
+        g.assert_safe_deploy_block_hashes(a1)
+
+    # A2: ```sh
+    a2 = md.replace(
+        anchor,
+        "```sh\nrm -rf \"$WF/skill-1791618014068\"\n```\n\n" + anchor,
+        1,
+    )
+    with pytest.raises(SystemExit, match="document hash|fence count"):
+        g.assert_safe_deploy_block_hashes(a2)
+
+    # A3: fence без языка
+    a3 = md.replace(
+        anchor,
+        "```\nrm -rf \"$WF/skill-1791618014068\"\n```\n\n" + anchor,
+        1,
+    )
+    with pytest.raises(SystemExit, match="document hash|fence count"):
+        g.assert_safe_deploy_block_hashes(a3)
+
+    # A5/A6: правка непрочитанного prose / хвост документа
+    a5 = md + "\n<!-- injected -->\n"
+    with pytest.raises(SystemExit, match="document hash"):
+        g.assert_safe_deploy_block_hashes(a5)
+
+    # A16: мутация порядка/содержимого fence (маркер в первом bash)
+    a16 = md.replace("```bash\n", "```bash\n# reorder-marker\n", 1)
+    with pytest.raises(SystemExit, match="document hash|fence"):
+        g.assert_safe_deploy_block_hashes(a16)
+
+    # A17: ложь в prose про fail-closed
+    a17 = md.replace("fail-closed", "fail-open CONTINUE ON ERROR", 1)
+    if a17 == md:
+        a17 = md + "\n4c continues without confirmation.\n"
+    with pytest.raises(SystemExit, match="document hash"):
+        g.assert_safe_deploy_block_hashes(a17)
+
+    # A18: убрать ключевое предупреждение / Permission A
+    a18 = md.replace("Permission A", "Permission X", 1)
+    assert a18 != md
+    with pytest.raises(SystemExit, match="document hash"):
+        g.assert_safe_deploy_block_hashes(a18)
 
 
 def test_n39_mutations_m1_m4_detected() -> None:

@@ -243,6 +243,9 @@ def load_manifest(path: Path) -> dict[str, str]:
     return d
 
 
+_FENCE_RE = re.compile(r"^```([^\n]*)\r?\n(.*?)```", re.MULTILINE | re.DOTALL)
+
+
 def extract_bash_steps(md_text: str) -> list[str]:
     """Извлечь fenced ```bash блоки из SAFE_DEPLOY.md (N39)."""
     blocks: list[str] = []
@@ -253,6 +256,11 @@ def extract_bash_steps(md_text: str) -> list[str]:
             continue
         blocks.append(part[:end].strip("\n"))
     return blocks
+
+
+def extract_all_fences(md_text: str) -> list[tuple[str, str]]:
+    """Все fenced-блоки (lang, body) в порядке документа — ловит A1–A3/A15."""
+    return [(m.group(1).strip(), m.group(2)) for m in _FENCE_RE.finditer(md_text)]
 
 
 _BLOCK_PREDS = {
@@ -277,6 +285,24 @@ def normalize_bash_block(text: str) -> str:
     return "\n".join(ln.rstrip() for ln in text.splitlines()).strip() + "\n"
 
 
+def document_sha256(md_text: str) -> str:
+    """Полный sha256 текста SAFE_DEPLOY.md (закрывает вставки вне pin-блоков)."""
+    # Нормализация EOL → LF; содержимое иначе байт-в-байт как в репо.
+    norm = md_text.replace("\r\n", "\n").replace("\r", "\n")
+    if not norm.endswith("\n"):
+        norm += "\n"
+    return hashlib.sha256(norm.encode("utf-8")).hexdigest()
+
+
+def fence_hashes(md_text: str) -> list[str]:
+    """Упорядоченные sha256 всех fences (lang\\0body)."""
+    out: list[str] = []
+    for lang, body in extract_all_fences(md_text):
+        payload = f"{lang}\0{normalize_bash_block(body)}"
+        out.append(hashlib.sha256(payload.encode("utf-8")).hexdigest())
+    return out
+
+
 def critical_block_hashes(md_text: str) -> dict[str, str]:
     """sha256 нормализованных критических bash-блоков SAFE_DEPLOY (N39 pin)."""
     blocks = extract_bash_steps(md_text)
@@ -293,7 +319,7 @@ def critical_block_hashes(md_text: str) -> dict[str, str]:
 def assert_safe_deploy_block_hashes(
     md_text: str, expected_path: Path | None = None
 ) -> None:
-    """Сверить sha256 критических блоков с reviewed fixture (анти whack-a-mole)."""
+    """Pin всего документа + всех fences + именованных блоков (N39 / A1–A18)."""
 
     if expected_path is None:
         expected_path = (
@@ -302,14 +328,36 @@ def assert_safe_deploy_block_hashes(
             / "fixtures"
             / "safe_deploy_block_hashes.json"
         )
-    expected = json.loads(expected_path.read_text(encoding="utf-8"))["blocks"]
-    actual = critical_block_hashes(md_text)
-    if set(actual) != set(expected):
+    expected = json.loads(expected_path.read_text(encoding="utf-8"))
+
+    doc = document_sha256(md_text)
+    want_doc = expected.get("document_sha256")
+    if not want_doc:
+        raise SystemExit("fixture missing document_sha256")
+    if doc != want_doc:
         raise SystemExit(
-            f"block set mismatch: extra={set(actual)-set(expected)} "
-            f"missing={set(expected)-set(actual)}"
+            f"SAFE_DEPLOY document hash drift: got {doc} want {want_doc}"
         )
-    bad = {k: (actual[k], expected[k]) for k in actual if actual[k] != expected[k]}
+
+    fences = fence_hashes(md_text)
+    want_fences = expected.get("fences")
+    if want_fences is None:
+        raise SystemExit("fixture missing fences")
+    if len(fences) != len(want_fences):
+        raise SystemExit(
+            f"fence count drift: got {len(fences)} want {len(want_fences)}"
+        )
+    if fences != want_fences:
+        raise SystemExit("SAFE_DEPLOY fence hash drift (order or content)")
+
+    want_blocks = expected["blocks"]
+    actual = critical_block_hashes(md_text)
+    if set(actual) != set(want_blocks):
+        raise SystemExit(
+            f"block set mismatch: extra={set(actual)-set(want_blocks)} "
+            f"missing={set(want_blocks)-set(actual)}"
+        )
+    bad = {k: (actual[k], want_blocks[k]) for k in actual if actual[k] != want_blocks[k]}
     if bad:
         raise SystemExit(f"SAFE_DEPLOY block hash drift: {sorted(bad)}")
 
