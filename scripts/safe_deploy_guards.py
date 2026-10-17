@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import sys
@@ -253,6 +255,65 @@ def extract_bash_steps(md_text: str) -> list[str]:
     return blocks
 
 
+_BLOCK_PREDS = {
+    "roots_deploy": lambda b: "DEPLOY_ROOT=" in b and "STAMP=" in b and "mkdir -p" in b,
+    "roots_canon": lambda b: (
+        "AGENT_DATA_LOGICAL=/home/box/agent-data" in b
+        and "SKILL_ROOT_REAL=" in b
+        and "export BK" in b
+        and "validate-env" in b
+    ),
+    "step2": lambda b: "BEFORE_MARKER" in b,
+    "step3": lambda b: "MANIFEST_BEFORE" in b and "noclobber" in b,
+    "step4b": lambda b: "4b ok" in b,
+    "step4c": lambda b: "skill-compare" in b and "LIVE_SKILL" in b,
+    "step6": lambda b: "allowed_exact" in b and "MANIFEST_AFTER" in b,
+    "step10a": lambda b: 'cp -a "$BK/profile.json"' in b,
+    "step10b": lambda b: "refuse delete" in b and "path-check" in b,
+}
+
+
+def normalize_bash_block(text: str) -> str:
+    return "\n".join(ln.rstrip() for ln in text.splitlines()).strip() + "\n"
+
+
+def critical_block_hashes(md_text: str) -> dict[str, str]:
+    """sha256 нормализованных критических bash-блоков SAFE_DEPLOY (N39 pin)."""
+    blocks = extract_bash_steps(md_text)
+    out: dict[str, str] = {}
+    for name, pred in _BLOCK_PREDS.items():
+        hits = [b for b in blocks if pred(b)]  # type: ignore[operator]
+        if len(hits) != 1:
+            raise SystemExit(f"{name}: expected 1 block, got {len(hits)}")
+        norm = normalize_bash_block(hits[0])
+        out[name] = hashlib.sha256(norm.encode("utf-8")).hexdigest()
+    return out
+
+
+def assert_safe_deploy_block_hashes(
+    md_text: str, expected_path: Path | None = None
+) -> None:
+    """Сверить sha256 критических блоков с reviewed fixture (анти whack-a-mole)."""
+
+    if expected_path is None:
+        expected_path = (
+            Path(__file__).resolve().parents[1]
+            / "tests"
+            / "fixtures"
+            / "safe_deploy_block_hashes.json"
+        )
+    expected = json.loads(expected_path.read_text(encoding="utf-8"))["blocks"]
+    actual = critical_block_hashes(md_text)
+    if set(actual) != set(expected):
+        raise SystemExit(
+            f"block set mismatch: extra={set(actual)-set(expected)} "
+            f"missing={set(expected)-set(actual)}"
+        )
+    bad = {k: (actual[k], expected[k]) for k in actual if actual[k] != expected[k]}
+    if bad:
+        raise SystemExit(f"SAFE_DEPLOY block hash drift: {sorted(bad)}")
+
+
 def assert_safe_deploy_integrity(md_text: str) -> None:
     """Структурная целостность SAFE_DEPLOY: ловит мутации M1–M4 (N39)."""
     blocks = extract_bash_steps(md_text)
@@ -328,7 +389,8 @@ def main(argv: list[str]) -> int:
             "       safe_deploy_guards.py skill-compare REPO_SKILL LIVE_SKILL\n"
             "       safe_deploy_guards.py canon PATH\n"
             "       safe_deploy_guards.py validate-env [--need-repo]\n"
-            "       safe_deploy_guards.py extract-steps SAFE_DEPLOY.md",
+            "       safe_deploy_guards.py extract-steps SAFE_DEPLOY.md\n"
+            "       safe_deploy_guards.py check-hashes SAFE_DEPLOY.md [FIXTURE.json]",
             file=sys.stderr,
         )
         return 2
@@ -355,6 +417,12 @@ def main(argv: list[str]) -> int:
     if cmd == "extract-steps":
         blocks = extract_bash_steps(Path(argv[2]).read_text(encoding="utf-8"))
         print(len(blocks))
+        return 0
+    if cmd == "check-hashes":
+        md = Path(argv[2]).read_text(encoding="utf-8")
+        fixture = Path(argv[3]) if len(argv) > 3 else None
+        assert_safe_deploy_block_hashes(md, fixture)
+        print("SAFE_DEPLOY block hashes ok")
         return 0
     print(f"unknown command {cmd}", file=sys.stderr)
     return 2

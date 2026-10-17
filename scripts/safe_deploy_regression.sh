@@ -425,6 +425,10 @@ else:
 print("PASS N39 integrity + M3 mutation detected")
 PY
 
+$PY "$N_GUARDS" check-hashes "$(native "$ROOT/docs/analyst_skill_patch/SAFE_DEPLOY.md")" \
+  "$(native "$ROOT/tests/fixtures/safe_deploy_block_hashes.json")"
+echo "PASS N39 SAFE_DEPLOY block hashes pinned"
+
 # --- N39: run AGENT_REAL=/ case from SAFE_DEPLOY step-2 preface in env -i ---
 set +e
 env -i PATH="$PATH" BK="$N_DEPLOY" WF="$N_SKILL_REAL" AGENT_REAL="/" \

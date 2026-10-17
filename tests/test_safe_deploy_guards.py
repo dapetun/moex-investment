@@ -308,6 +308,32 @@ def test_n39_integrity_ok_on_real_sd() -> None:
         encoding="utf-8"
     )
     g.assert_safe_deploy_integrity(md)
+    g.assert_safe_deploy_block_hashes(md)
+
+
+def test_n39_block_hash_detects_any_step_mutation() -> None:
+    """Любая правка критического bash-блока → drift hash (закрывает N1–N7)."""
+    md = (ROOT / "docs" / "analyst_skill_patch" / "SAFE_DEPLOY.md").read_text(
+        encoding="utf-8"
+    )
+    g.assert_safe_deploy_block_hashes(md)
+    mutated = md.replace("4b ok", "4b ok MUTATED", 1)
+    with pytest.raises(SystemExit, match="hash drift|block hash"):
+        g.assert_safe_deploy_block_hashes(mutated)
+    # N2-style: comment out validate-env in 10a
+    blocks = g.extract_bash_steps(md)
+    step10a = next(b for b in blocks if 'cp -a "$BK/profile.json"' in b)
+    bad = step10a.replace(
+        "python3 \"$REPO_ROOT/scripts/safe_deploy_guards.py\" validate-env",
+        ": # python3 \"$REPO_ROOT/scripts/safe_deploy_guards.py\" validate-env",
+    )
+    with pytest.raises(SystemExit, match="hash drift|block hash|missing validate"):
+        g.assert_safe_deploy_block_hashes(md.replace(step10a, bad))
+    # N6: 4c || true
+    step4c = next(b for b in blocks if "skill-compare" in b and "LIVE_SKILL" in b)
+    bad4c = step4c.replace("|| exit 1", "|| true")
+    with pytest.raises(SystemExit, match="hash drift|block hash"):
+        g.assert_safe_deploy_block_hashes(md.replace(step4c, bad4c))
 
 
 def test_n39_mutations_m1_m4_detected() -> None:
