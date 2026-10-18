@@ -390,13 +390,39 @@ def verify_manifest_allowlist(
             raise SystemExit(f"new/changed path not in allowlist: {path}")
 
 
+def _validate_one_write(canon: str, content: str, allow: set[str]) -> None:
+    """Проверки одного write без записи на диск (S-3)."""
+    if Path(canon).name == "optimizer.yaml":
+        raise SystemExit("write refused: optimizer.yaml never writable")
+    if canon not in allow:
+        raise SystemExit(f"write refused (not in allowlist): {canon}")
+    if not content or not content.strip():
+        raise SystemExit(f"empty write refused: {canon}")
+    if Path(canon).name == "profile.json":
+        try:
+            obj = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise SystemExit(f"profile.json must be valid JSON: {e}") from e
+        if not isinstance(obj, dict) or "description" not in obj:
+            raise SystemExit("profile.json must be object with description")
+        if not str(obj.get("description", "")).strip():
+            raise SystemExit("profile.json description must be non-empty")
+    if Path(canon).name == "SKILL.md":
+        if not content.lstrip().startswith("---"):
+            raise SystemExit(f"SKILL.md must have frontmatter: {canon}")
+        # минимум: открывающий и закрывающий ---
+        parts = content.split("---", 2)
+        if len(parts) < 3:
+            raise SystemExit(f"SKILL.md frontmatter incomplete: {canon}")
+
+
 def apply_file_writes(
     writes: dict[str, str],
     allowlist: list[str],
     *,
     expected_after_sha: dict[str, str] | None = None,
 ) -> None:
-    """Записать содержимое только в allowlist-пути; сверить sha «после» (N-6/R-2/R-8)."""
+    """Записать содержимое только в allowlist-пути; сверить sha «после» (N-6/S-3)."""
     if not writes:
         raise SystemExit("empty writes refused")
     allow = {g().canonicalize_path(p) for p in allowlist}
@@ -406,30 +432,27 @@ def apply_file_writes(
         for raw in writes:
             if g().canonicalize_path(raw) not in exp:
                 raise SystemExit(f"missing expected_after_sha for {raw}")
+        # S-3: ожидаемые sha считаются от content до записи
+        for raw, content in writes.items():
+            canon = g().canonicalize_path(raw)
+            calc = sha256_bytes(content.encode("utf-8"))
+            if calc != exp[canon]:
+                raise SystemExit(
+                    f"expected_after_sha != sha(content) before write: {canon}"
+                )
+    # S-3: сначала провалидировать ВСЕ writes, потом писать
+    prepared: list[tuple[str, str]] = []
     for raw, content in writes.items():
         canon = g().canonicalize_path(raw)
-        if Path(canon).name == "optimizer.yaml":
-            raise SystemExit("write refused: optimizer.yaml never writable")
-        if canon not in allow:
-            raise SystemExit(f"write refused (not in allowlist): {canon}")
-        if not content:
-            raise SystemExit(f"empty write refused: {canon}")
-        if Path(canon).name == "profile.json":
-            try:
-                obj = json.loads(content)
-            except json.JSONDecodeError as e:
-                raise SystemExit(f"profile.json must be valid JSON: {e}") from e
-            if not isinstance(obj, dict) or "description" not in obj:
-                raise SystemExit("profile.json must be object with description")
-        if Path(canon).name == "SKILL.md" and not content.lstrip().startswith("---"):
-            raise SystemExit(f"SKILL.md must have frontmatter: {canon}")
+        _validate_one_write(canon, content, allow)
+        prepared.append((canon, content))
+    for canon, content in prepared:
         Path(canon).write_text(content, encoding="utf-8", newline="\n")
         if exp is not None:
             got = sha256_file(Path(canon))
-            want = exp[canon]
-            if got != want:
+            if got != exp[canon]:
                 raise SystemExit(
-                    f"expected_after_sha mismatch {canon}: got {got} want {want}"
+                    f"expected_after_sha mismatch {canon}: got {got} want {exp[canon]}"
                 )
 
 
@@ -768,14 +791,28 @@ def main(argv: list[str]) -> int:
                     agent_dir=agent_dir,
                     invest_spec=invest_spec,
                 )
-                base = cfg["baseline"]
+                # T-1: baseline из AUDIT_BASELINE PKG (не произвольный dict)
+                pkg = Path(cfg["pkg_root"])
+                audit = (pkg / "docs/analyst_skill_patch/live_patches/AUDIT_BASELINE.md").read_text(
+                    encoding="utf-8"
+                )
+                names = parse_baseline_table(audit)
+                base = map_audit_baseline_to_paths(
+                    names,
+                    profile=agent_dir / "profile.json",
+                    opt=workflows / "skill-1791618014068" / "SKILL.md",
+                    pos=workflows / "skill-1791618006478" / "SKILL.md",
+                    qc=workflows / "skill-1791617999761" / "SKILL.md",
+                    optimizer_yaml=optimizer_yaml,
+                    spec=invest_spec,
+                )
                 allowed_base = {g().canonicalize_path(p) for p in allow}
                 allowed_base.add(g().canonicalize_path(str(optimizer_yaml)))
-                for p in base:
-                    if g().canonicalize_path(p) not in allowed_base:
-                        raise SystemExit(
-                            f"baseline path not in fixed allowlist: {p}"
-                        )
+                if set(base) != allowed_base:
+                    raise SystemExit(
+                        "baseline keys must equal allowlist ∪ optimizer.yaml (T-1)"
+                    )
+                # живые sha должны совпасть с таблицей (check_baseline внутри phase-a)
                 bk = Path(cfg["bk"])
                 run_phase_a(
                     deploy_op_id=cfg["deploy_op_id"],

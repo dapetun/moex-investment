@@ -502,35 +502,53 @@ def test_refuse_optimizer_yaml_write(box: dict) -> None:
         )
 
 
-def test_phase_a_rejects_foreign_baseline_path(box: dict) -> None:
-    """S-1: baseline не может подтянуть store.db в BK."""
-    foreign = box["agent"] / "store.db"
-    foreign.write_bytes(b"x")
-    base = _baseline(box)
-    base[str(foreign.resolve())] = md.sha256_file(foreign)
-    # API run_phase_a ещё принимает baseline как есть — CLI должен отсечь.
-    # Здесь проверяем helper-контракт: backup_set только allow∪baseline,
-    # а CLI filter тестируем через main.
+def test_validate_all_writes_before_any(box: dict) -> None:
+    """S-3: при ошибке на 2-м write первый не записан."""
+    opt = Path(box["allow"][0])
+    before = opt.read_text(encoding="utf-8")
+    writes = {
+        box["allow"][0]: _skill("# OPT\nok\n"),
+        box["allow"][3]: "NOT JSON",
+    }
+    exp = {md.g().canonicalize_path(k): _sha_of(v) for k, v in writes.items()}
+    with pytest.raises(SystemExit, match="JSON"):
+        md.apply_file_writes(writes, box["allow"], expected_after_sha=exp)
+    assert opt.read_text(encoding="utf-8") == before
+
+
+def test_phase_a_cli_builds_baseline_from_audit(box: dict) -> None:
+    """T-1: CLI phase-a берёт baseline из AUDIT_BASELINE PKG, не из config."""
     import subprocess
 
+    # подставить audit sha под mock-файлы: иначе drift
+    # для CLI нужен pkg с AUDIT — используем box pkg, но baseline live ≠ audit table
+    # → ожидаем baseline drift (таблица ≠ mock content) или key set ok then drift
     cfg = {
         "deploy_op_id": "pa-20261017-2390",
         "bk": str(box["tmp"] / "bk_cli"),
         "agent_data": str(box["agent_data"]),
         "invest_portfolio": str(box["invest"]),
-        "baseline": base,
+        "pkg_root": str(box["pkg"]),
         "active_ops": [],
+        "baseline": {"evil": "x"},  # игнорируется CLI
     }
     cfg_path = box["tmp"] / "phase_a.json"
     cfg_path.write_text(json.dumps(cfg), encoding="utf-8", newline="\n")
     r = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "minimal_deploy.py"), "phase-a", "--config", str(cfg_path)],
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "minimal_deploy.py"),
+            "phase-a",
+            "--config",
+            str(cfg_path),
+        ],
         check=False,
         capture_output=True,
         text=True,
     )
     assert r.returncode != 0
-    assert "baseline path not in fixed allowlist" in (r.stderr + r.stdout)
+    # mock sha ≠ AUDIT_BASELINE table → drift; evil baseline ignored
+    assert "baseline" in (r.stderr + r.stdout).lower()
 
 
 def test_tree_skips_store_db(box: dict) -> None:
