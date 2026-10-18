@@ -792,7 +792,14 @@ def main(argv: list[str]) -> int:
                     invest_spec=invest_spec,
                 )
                 # T-1: baseline из AUDIT_BASELINE PKG (не произвольный dict)
-                pkg = Path(cfg["pkg_root"])
+                # U-1: pkg_root только корень проверенного пакета (рядом со скриптом)
+                pkg = Path(__file__).resolve().parents[1]
+                if "pkg_root" in cfg:
+                    cfg_pkg = Path(cfg["pkg_root"]).resolve()
+                    if cfg_pkg != pkg:
+                        raise SystemExit(
+                            f"pkg_root must be this package root ({pkg}), got {cfg_pkg}"
+                        )
                 audit = (pkg / "docs/analyst_skill_patch/live_patches/AUDIT_BASELINE.md").read_text(
                     encoding="utf-8"
                 )

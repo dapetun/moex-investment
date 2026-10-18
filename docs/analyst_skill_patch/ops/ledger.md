@@ -20,7 +20,7 @@
 | — (N58-N60) | cur-20261017-2215 | — | a5a59ba | 2145 | rejected | N59 shadow pkg; N60 replace/fsmonitor. |
 | — (N59-N60b) | cur-20261017-2235 | — | ba1f23c | 2215 | rejected | F1–F8; owner chose вариант B (MINIMAL_DEPLOY). |
 | — (вариант B) | cur-20261017-2248 | 2c282612-01fb-4712-be7c-ab9559eacf7 | e5dbb62 | 2235 | rejected | Песочница REJECT N-1…N-6; F1–F8 closed under new model. |
-| — (N-1…N-6) | (pending) | — | (tip) | 2248 | submitted | Fix skill_id in BK, atomic restore, external HEAD pin, existed_before, CLI+expected_after_sha. **No live apply**. |
+| — (N-1…N-6) | cur-20261017-2305 | c0a96aff-7efc-4756-8c44-3094be066910 | f756501 | 2248 | submitted | Fix skill_id in BK, atomic restore, external HEAD pin, existed_before, CLI+expected_after_sha. **No live apply**. |
 
 ## Pin values — MINIMAL_DEPLOY (внешний pin задания)
 

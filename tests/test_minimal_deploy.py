@@ -520,17 +520,14 @@ def test_phase_a_cli_builds_baseline_from_audit(box: dict) -> None:
     """T-1: CLI phase-a берёт baseline из AUDIT_BASELINE PKG, не из config."""
     import subprocess
 
-    # подставить audit sha под mock-файлы: иначе drift
-    # для CLI нужен pkg с AUDIT — используем box pkg, но baseline live ≠ audit table
-    # → ожидаем baseline drift (таблица ≠ mock content) или key set ok then drift
     cfg = {
         "deploy_op_id": "pa-20261017-2390",
         "bk": str(box["tmp"] / "bk_cli"),
         "agent_data": str(box["agent_data"]),
         "invest_portfolio": str(box["invest"]),
-        "pkg_root": str(box["pkg"]),
+        "pkg_root": str(box["pkg"]),  # != script root → U-1 refuse
         "active_ops": [],
-        "baseline": {"evil": "x"},  # игнорируется CLI
+        "baseline": {"evil": "x"},
     }
     cfg_path = box["tmp"] / "phase_a.json"
     cfg_path.write_text(json.dumps(cfg), encoding="utf-8", newline="\n")
@@ -547,8 +544,39 @@ def test_phase_a_cli_builds_baseline_from_audit(box: dict) -> None:
         text=True,
     )
     assert r.returncode != 0
-    # mock sha ≠ AUDIT_BASELINE table → drift; evil baseline ignored
-    assert "baseline" in (r.stderr + r.stdout).lower()
+    out = (r.stderr + r.stdout).lower()
+    assert "pkg_root" in out or "baseline" in out
+
+
+def test_pkg_root_must_match_script_package(box: dict) -> None:
+    """U-1: чужой pkg_root отвергается."""
+    import subprocess
+
+    cfg = {
+        "deploy_op_id": "pa-20261017-2391",
+        "bk": str(box["tmp"] / "bk_u1"),
+        "agent_data": str(box["agent_data"]),
+        "invest_portfolio": str(box["invest"]),
+        "pkg_root": str(box["tmp"] / "other_pkg"),
+        "active_ops": [],
+    }
+    (box["tmp"] / "other_pkg").mkdir()
+    cfg_path = box["tmp"] / "u1.json"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8", newline="\n")
+    r = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "minimal_deploy.py"),
+            "phase-a",
+            "--config",
+            str(cfg_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode != 0
+    assert "pkg_root must be this package root" in (r.stderr + r.stdout)
 
 
 def test_tree_skips_store_db(box: dict) -> None:
