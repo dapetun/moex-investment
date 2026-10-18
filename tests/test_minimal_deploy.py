@@ -502,6 +502,37 @@ def test_refuse_optimizer_yaml_write(box: dict) -> None:
         )
 
 
+def test_phase_a_rejects_foreign_baseline_path(box: dict) -> None:
+    """S-1: baseline не может подтянуть store.db в BK."""
+    foreign = box["agent"] / "store.db"
+    foreign.write_bytes(b"x")
+    base = _baseline(box)
+    base[str(foreign.resolve())] = md.sha256_file(foreign)
+    # API run_phase_a ещё принимает baseline как есть — CLI должен отсечь.
+    # Здесь проверяем helper-контракт: backup_set только allow∪baseline,
+    # а CLI filter тестируем через main.
+    import subprocess
+
+    cfg = {
+        "deploy_op_id": "pa-20261017-2390",
+        "bk": str(box["tmp"] / "bk_cli"),
+        "agent_data": str(box["agent_data"]),
+        "invest_portfolio": str(box["invest"]),
+        "baseline": base,
+        "active_ops": [],
+    }
+    cfg_path = box["tmp"] / "phase_a.json"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8", newline="\n")
+    r = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "minimal_deploy.py"), "phase-a", "--config", str(cfg_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode != 0
+    assert "baseline path not in fixed allowlist" in (r.stderr + r.stdout)
+
+
 def test_tree_skips_store_db(box: dict) -> None:
     """R-1: store.db в tree, но не в BK."""
     store = box["agent"] / "store.db"

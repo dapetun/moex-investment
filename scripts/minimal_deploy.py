@@ -574,7 +574,9 @@ def run_phase_a(
     before = write_manifest(manifest_paths, bk / "MANIFEST_BEFORE.txt")
     (bk / "deploy_op_id.txt").write_text(deploy_op_id + "\n", encoding="utf-8")
     (bk / "allowlist.json").write_text(
-        json.dumps(tracked_paths, indent=2) + "\n", encoding="utf-8"
+        json.dumps([g().canonicalize_path(p) for p in tracked_paths], indent=2)
+        + "\n",
+        encoding="utf-8",
     )
     return {
         "manifest_before": before,
@@ -598,7 +600,18 @@ def run_phase_b_files(
     """Применить файловые патчи + MANIFEST_AFTER + allowlist + optimizer pin."""
     if expected_after_sha is None:
         raise SystemExit("expected_after_sha required (N-6)")
-    # R-2: allowlist только из BK (зафиксирован в phase-a), не из произвольного config
+    # R-2/S-1: allowlist только из BK; при наличии roots — пересобрать и сверить
+    roots_f = bk / "live_roots.json"
+    if roots_f.is_file():
+        roots = json.loads(roots_f.read_text(encoding="utf-8"))
+        rebuilt = allowlist_paths(
+            skill_root=Path(roots["workflows"]),
+            agent_dir=Path(roots["agent_dir"]),
+            invest_spec=Path(roots["invest_spec"]),
+        )
+        if Path(roots["agent_dir"]).name != AGENT_ID:
+            raise SystemExit("BK agent_dir != AGENT_ID")
+        allowlist = rebuilt
     allow_f = bk / "allowlist.json"
     if allow_f.is_file():
         fixed = json.loads(allow_f.read_text(encoding="utf-8"))
@@ -606,7 +619,6 @@ def run_phase_b_files(
             g().canonicalize_path(p) for p in fixed
         }:
             raise SystemExit("allowlist drift vs BK/allowlist.json (R-2)")
-        allowlist = fixed
     before = g().load_manifest(bk / "MANIFEST_BEFORE.txt")
     apply_file_writes(writes, allowlist, expected_after_sha=expected_after_sha)
     # R-3: пересобрать дерево если корни сохранены
@@ -740,38 +752,75 @@ def main(argv: list[str]) -> int:
             raise SystemExit(f"bad --config: {e}") from e
         try:
             if cmd == "phase-a":
-                # R-2: allowlist строится в коде, не из произвольного списка
-                allow = allowlist_paths(
-                    skill_root=Path(cfg["workflows"]),
-                    agent_dir=Path(cfg["agent_dir"]),
-                    invest_spec=Path(cfg["invest_spec"]),
+                # R-2: корни из config, allowlist — только AGENT_ID + фиксированные имена
+                agent_data = Path(cfg["agent_data"])
+                invest_portfolio = Path(cfg["invest_portfolio"])
+                workflows = agent_data / "workflows"
+                agent_dir = agent_data / "agents" / AGENT_ID
+                invest_spec = invest_portfolio / "analysis_spec.md"
+                optimizer_yaml = (
+                    invest_portfolio / "optimizer" / "config" / "optimizer.yaml"
                 )
+                if not agent_dir.is_dir():
+                    raise SystemExit(f"Analyst agent dir missing: {agent_dir}")
+                allow = allowlist_paths(
+                    skill_root=workflows,
+                    agent_dir=agent_dir,
+                    invest_spec=invest_spec,
+                )
+                base = cfg["baseline"]
+                allowed_base = {g().canonicalize_path(p) for p in allow}
+                allowed_base.add(g().canonicalize_path(str(optimizer_yaml)))
+                for p in base:
+                    if g().canonicalize_path(p) not in allowed_base:
+                        raise SystemExit(
+                            f"baseline path not in fixed allowlist: {p}"
+                        )
+                bk = Path(cfg["bk"])
                 run_phase_a(
                     deploy_op_id=cfg["deploy_op_id"],
-                    bk=Path(cfg["bk"]),
-                    baseline=cfg["baseline"],
+                    bk=bk,
+                    baseline=base,
                     tracked_paths=allow,
-                    workflows=Path(cfg["workflows"]),
-                    optimizer_yaml=Path(cfg["optimizer_yaml"]),
+                    workflows=workflows,
+                    optimizer_yaml=optimizer_yaml,
                     active_ops=cfg.get("active_ops") or [],
-                    tree_roots=[
-                        Path(cfg["workflows"]),
-                        Path(cfg["agent_dir"]),
-                        Path(cfg["invest_spec"]).parent,
-                    ],
+                    tree_roots=[workflows, agent_dir, invest_portfolio],
+                )
+                (bk / "live_roots.json").write_text(
+                    json.dumps(
+                        {
+                            "agent_data": str(agent_data.resolve()),
+                            "workflows": str(workflows.resolve()),
+                            "agent_dir": str(agent_dir.resolve()),
+                            "invest_portfolio": str(invest_portfolio.resolve()),
+                            "invest_spec": str(invest_spec.resolve()),
+                            "optimizer_yaml": str(optimizer_yaml.resolve()),
+                            "agent_id": AGENT_ID,
+                        },
+                        indent=2,
+                    )
+                    + "\n",
+                    encoding="utf-8",
                 )
                 print("phase-a ok")
                 return 0
             if cmd == "phase-b":
-                allow = json.loads(
-                    (Path(cfg["bk"]) / "allowlist.json").read_text(encoding="utf-8")
+                bk = Path(cfg["bk"])
+                roots = json.loads((bk / "live_roots.json").read_text(encoding="utf-8"))
+                if roots.get("agent_id") != AGENT_ID:
+                    raise SystemExit("BK agent_id mismatch")
+                allow = allowlist_paths(
+                    skill_root=Path(roots["workflows"]),
+                    agent_dir=Path(roots["agent_dir"]),
+                    invest_spec=Path(roots["invest_spec"]),
                 )
                 run_phase_b_files(
-                    bk=Path(cfg["bk"]),
+                    bk=bk,
                     writes=cfg["writes"],
                     allowlist=allow,
                     tracked_paths=allow,
-                    optimizer_yaml=Path(cfg["optimizer_yaml"]),
+                    optimizer_yaml=Path(roots["optimizer_yaml"]),
                     optimizer_sha_before=cfg["optimizer_sha_before"],
                     new_skill_md_path=cfg.get("new_skill_md_path"),
                     expected_after_sha=cfg["expected_after_sha"],
