@@ -1,6 +1,6 @@
 {
   "note": "EXTERNAL pin for assignment — pass via --expect-json OUTSIDE PKG",
-  "expect_head": "582f14587d50a798908c2a4a0650a876d6a818ca",
+  "expect_head": "aa3a911e15cbc68725226b2c6b53947a3114de9d",
   "files": {
     "scripts/minimal_deploy.py": "871f6f25ebdda19b66005a0ad65ae57edf7b6f5c7ac0f1e1fb23583de974021f",
     "scripts/safe_deploy_guards.py": "f0e3d9c5145a75e0f93f67afcdc3e454c13b79b4fdbf1b90e5a175e1ee85098c",
