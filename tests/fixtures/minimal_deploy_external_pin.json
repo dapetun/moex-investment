@@ -1,8 +1,8 @@
 {
   "note": "EXTERNAL pin for assignment — pass via --expect-json OUTSIDE PKG",
-  "expect_head": "aae07d988fb64ade63633c3374d411a982a8ab18",
+  "expect_head": "3386cc59314ec186f2aefae959af13ce3fd63a05",
   "files": {
-    "scripts/minimal_deploy.py": "71e391fbe95a486198a756d551474e4cdc96882f52759396809510f9a544650c",
+    "scripts/minimal_deploy.py": "c04e80fee893d19c34ca1f59ad275644f9eaf006f1e5a8c5eeb48ccbf338baac",
     "scripts/safe_deploy_guards.py": "f0e3d9c5145a75e0f93f67afcdc3e454c13b79b4fdbf1b90e5a175e1ee85098c",
     "docs/analyst_skill_patch/cli-analyst-bundle/SKILL.md": "126d2f72b81ae374050c3540dd1aaff8338c0601596a311b71ecad54d2ad7a05",
     "docs/analyst_skill_patch/live_patches/AUDIT_BASELINE.md": "21998697afd08a8191afda413dad1cc28901f8e49f07bd4a832a1931f6431d9f",
