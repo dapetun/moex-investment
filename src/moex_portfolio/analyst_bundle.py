@@ -99,12 +99,23 @@ def build_analyst_bundle(
     proc = Path(processed_dir) if processed_dir else events_mod.PROCESSED_DIR
     hist = Path(history_dir) if history_dir else events_mod.HISTORY_DIR
 
+    requested = [str(r).strip() for r in (run_ids or []) if str(r).strip()]
+    if not requested:
+        raise ValueError(
+            "RUN_IDS_REQUIRED: build-analyst-bundle needs --run-ids with "
+            "journal run_id for each successful CLI step to embed; "
+            "refusing empty runs[]"
+        )
+
     runs: list[dict[str, Any]] = []
-    for rid in run_ids or []:
+    for rid in requested:
         path = RUNS_DIR / f"{rid}.json"
         rec = _read_json(path)
-        if rec is not None:
-            runs.append({"run_id": rid, "path": str(path), "record": rec})
+        if rec is None:
+            raise FileNotFoundError(
+                f"RUN_NOT_FOUND: journal missing for run_id={rid} ({path})"
+            )
+        runs.append({"run_id": rid, "path": str(path), "record": rec})
 
     events = _list_event_summaries(proc)
     history_count = len(list(hist.glob("*.json"))) if hist.exists() else 0

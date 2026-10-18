@@ -13,7 +13,7 @@
 | `optimize --allow-optimize` | Max Sharpe + QC | 0 | 2 QC/solver/params, 4 source |
 | `compare` | current vs last_target | 0 | 2 invalid holdings/target |
 | `ingest-events [--source PATH] [--test-events]` | радар/inbox → processed | 0 | 2 partial / test-gate |
-| `build-analyst-bundle` | пакет артефактов для Аналитика | 0 | 2 missing artifacts |
+| `build-analyst-bundle` | пакет артефактов для Аналитика | 0 | 2 missing artifacts / `RUN_IDS_REQUIRED` / `RUN_NOT_FOUND` |
 | `report --run-id` | MD/JSON по journal (новый файл под run_id команды `report`, исходный отчёт optimize/compare не перезаписывается) | 0 | 1 missing run |
 
 Коды: `0` ok, `1` unexpected/missing run, `2` бизнес/валидация (в т.ч. partial ingest),

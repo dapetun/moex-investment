@@ -608,6 +608,7 @@ def cmd_build_analyst_bundle(args: argparse.Namespace) -> int:
                 "bundle_md": str(paths["md"]),
                 "schema": bundle.get("schema"),
                 "events_count": len((bundle.get("events") or {}).get("items") or []),
+                "runs_count": len(bundle.get("runs") or []),
                 "holdings_status": (bundle.get("holdings") or {}).get("file_status"),
             }
         finish_run(run["run_id"], status="ok", result=result)
@@ -617,9 +618,20 @@ def cmd_build_analyst_bundle(args: argparse.Namespace) -> int:
         finish_run(run["run_id"], status="error", error=str(e))
         _print_json({"error": str(e)}, stream=sys.stderr)
         return 3
+    except ValueError as e:
+        finish_run(run["run_id"], status="error", error=str(e))
+        msg = str(e)
+        code = "RUN_IDS_REQUIRED" if "RUN_IDS_REQUIRED" in msg else "BUNDLE_INVALID"
+        _print_json({"error": msg, "code": code}, stream=sys.stderr)
+        return 2
     except (OSError, json.JSONDecodeError, HoldingsValidationError, FileNotFoundError) as e:
         finish_run(run["run_id"], status="error", error=str(e))
-        _print_json({"error": str(e)}, stream=sys.stderr)
+        msg = str(e)
+        code = "RUN_NOT_FOUND" if "RUN_NOT_FOUND" in msg else None
+        payload: dict[str, Any] = {"error": msg}
+        if code:
+            payload["code"] = code
+        _print_json(payload, stream=sys.stderr)
         return 2
     except Exception as e:  # noqa: BLE001
         finish_run(run["run_id"], status="error", error=str(e))
@@ -901,7 +913,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_bun.add_argument(
         "--run-ids",
         default="",
-        help="Comma-separated journal run_id list to embed",
+        help=(
+            "Required: comma-separated journal run_id list to embed "
+            "(empty runs[] is refused)"
+        ),
     )
     p_bun.add_argument(
         "--test-events",

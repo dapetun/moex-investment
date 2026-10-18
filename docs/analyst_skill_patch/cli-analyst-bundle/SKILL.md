@@ -96,12 +96,19 @@ validate-data →
 adapt-portfolio --write-holdings →
 optimize --allow-optimize --mode holdings →
 compare →
-ingest-events (только по отдельной явной команде; иначе события
-  из штатного news/events_latest.json) →
-build-analyst-bundle [--real-data только если источник user_csv
-  и Даниил подтвердил] →
+ingest-events --test-events (только по отдельной явной команде; иначе
+  события из штатного news/events_latest.json; без ingest в CLI
+  processed — в bundle events_count=0) →
+build-analyst-bundle --run-ids <opt_run>,<cmp_run>[,…]
+  [--test-events если события из тестового каталога]
+  [--ingest-json …] [--compare-json …] [--validation-json …]
+  [--real-data только если источник user_csv и Даниил подтвердил] →
 отчёт по bundle + запись в portfolio/reports и logs по правилам профиля
 ```
+
+`--run-ids` обязателен: пустой `runs[]` или отсутствующий journal → exit 2
+(`RUN_IDS_REQUIRED` / `RUN_NOT_FOUND`). Не собирать и не интерпретировать
+неполный bundle.
 
 Fail-safe: любой ненулевой exit или partial bundle → **стоп**, не выдавать
 успешный отчёт с целевыми весами; не затирать прежний `last_target`

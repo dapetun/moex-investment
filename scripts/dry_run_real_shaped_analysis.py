@@ -206,14 +206,44 @@ def main() -> int:
             ],
         ),
         ("compare", ["compare", "--min-drift", "0.05"]),
-        (
-            "build-analyst-bundle",
-            ["build-analyst-bundle", "--out-dir", str(work / "bundle")],
-        ),
     ):
         if not step(name, argv):
             print(json.dumps(report, ensure_ascii=False, indent=2))
             return 1
+
+    runs_dir = work / "data" / "outbox" / "runs"
+    opt_run = cmp_run = None
+    for path in sorted(runs_dir.glob("*.json")):
+        rec = json.loads(path.read_text(encoding="utf-8"))
+        if rec.get("command") == "optimize" and rec.get("status") == "ok":
+            opt_run = rec["run_id"]
+        elif rec.get("command") == "compare" and rec.get("status") == "ok":
+            cmp_run = rec["run_id"]
+    if not opt_run or not cmp_run:
+        report["steps"].append(
+            {
+                "step": "resolve-run-ids",
+                "ok": False,
+                "error": "missing optimize/compare journal runs",
+                "opt_run": opt_run,
+                "cmp_run": cmp_run,
+            }
+        )
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 1
+
+    if not step(
+        "build-analyst-bundle",
+        [
+            "build-analyst-bundle",
+            "--out-dir",
+            str(work / "bundle"),
+            "--run-ids",
+            f"{opt_run},{cmp_run}",
+        ],
+    ):
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 1
 
     report["ok"] = all(s["ok"] for s in report["steps"])
     report["fail_safe"] = (

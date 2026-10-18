@@ -20,6 +20,9 @@ python -m moex_portfolio build-analyst-bundle \
   --out-dir /tmp/bundle
 ```
 
+`--run-ids` обязателен. Пустой список или отсутствующий journal → exit 2
+(`RUN_IDS_REQUIRED` / `RUN_NOT_FOUND`); silent `runs: []` с exit 0 запрещён.
+
 Сквозной сценарий (изолированный tmp):
 
 ```bash

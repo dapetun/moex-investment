@@ -325,8 +325,10 @@ def main() -> int:
         bundle.get("schema") == "moex_analyst_bundle.v1"
         and bundle.get("synthetic") is True
         and len((bundle.get("events") or {}).get("items") or []) >= 1
+        and len(bundle.get("runs") or []) >= 2
         and (bundle.get("target") or {}).get("payload", {}).get("success") is True,
         events=len((bundle.get("events") or {}).get("items") or []),
+        runs=len(bundle.get("runs") or []),
         bundle_path=str(handoff_bundle),
     )
 
