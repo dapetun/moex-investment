@@ -7,7 +7,7 @@ description: >
   отказ. Не optimizer.yaml, не ISS в CLI, не cron.
 ---
 
-# CLI ↔ Аналитик портфеля (skill draft v2.2)
+# CLI ↔ Аналитик портфеля (skill draft v2.3)
 
 **Не применять без Разрешения A** (`permissions/PERMISSION_A.md`).
 Дословные правки live: `live_patches/`. Deploy: `MINIMAL_DEPLOY.md`.
@@ -96,19 +96,61 @@ validate-data →
 adapt-portfolio --write-holdings →
 optimize --allow-optimize --mode holdings →
 compare →
-ingest-events --test-events (только по отдельной явной команде; иначе
-  события из штатного news/events_latest.json; без ingest в CLI
-  processed — в bundle events_count=0) →
+[события — только если Даниил явно просил; см. сценарий ниже] →
 build-analyst-bundle --run-ids <opt_run>,<cmp_run>[,…]
-  [--test-events если события из тестового каталога]
-  [--ingest-json …] [--compare-json …] [--validation-json …]
-  [--real-data только если источник user_csv и Даниил подтвердил] →
+  + параметры подтверждения входных данных (см. ниже) →
 отчёт по bundle + запись в portfolio/reports и logs по правилам профиля
 ```
 
-`--run-ids` обязателен: пустой `runs[]` или отсутствующий journal → exit 2
-(`RUN_IDS_REQUIRED` / `RUN_NOT_FOUND`). Не собирать и не интерпретировать
-неполный bundle.
+### Синтетический тест с событиями (Permission A smoke)
+
+Когда Даниил просит CLI-анализ / bundle **с тестовыми событиями радара**
+на fixture (Permission A), выполнять **только** этот контур:
+
+1. Источник событий — **только** файл репозитория  
+   `tests/fixtures/radar_events_cli_bundle_flow.json`  
+   (schema 1.1, `is_test: true`, id в пространстве `TEST-EV-…`).
+2. **Запрещено** читать рабочий `/workspace/invest/news/events_latest.json`
+   и любой другой live/news путь в этом сценарии (в т.ч. «на всякий случай»
+   или «для сверки»). События для отчёта — **только** из собранного bundle.
+3. Импорт:
+   `ingest-events --source tests/fixtures/radar_events_cli_bundle_flow.json --test-events`  
+   (каталог записи — `processed/events_test`, не production `processed/events`).
+4. Сохранить JSON stdout ingest → `ingest.json`. Сохранить stdout/артефакты
+   `validate-data` и `compare` → `validation.json`, `compare.json`.
+   Запомнить `run_id` успешных `optimize` и `compare` из journal/outbox.
+5. Сборка (все флаги обязательны в этом сценарии):
+   ```text
+   build-analyst-bundle \
+     --target <last_target.json> \
+     --compare-json <compare.json> \
+     --validation-json <validation.json> \
+     --ingest-json <ingest.json> \
+     --run-ids <opt_run>,<cmp_run> \
+     --test-events \
+     --out-dir <bundle_dir>
+   ```
+6. Принять bundle только если:
+   - `schema == "moex_analyst_bundle.v1"`;
+   - в `runs[]` есть записи успешных **optimize** и **compare**
+     (минимум два `run_id` из шага 4);
+   - в `events.items[]` есть события из фикстуры
+     (ожидаемо `TEST-EV-20261018-AAA-FLOW-001`,
+     `TEST-EV-20261018-BBB-FLOW-001`; novelty-duplicate CCC не пишется);
+   - `events_count >= 2`, `runs_count >= 2`.
+7. При exit 2 с `RUN_IDS_REQUIRED` или `RUN_NOT_FOUND` — **стоп**,
+   вернуться к диагностике journal/`--run-ids`.  
+   **Нельзя** создавать, принимать или анализировать неполный bundle
+   (пустой `runs[]`, отсутствующие run_id, события «сбоку» из news/).
+
+Без явной просьбы Даниила про события: **не** запускать `ingest-events`;
+в bundle будет `events_count=0` — это допустимо только если он не просил
+события. Штатный qualitative вход профиля `news/events_latest.json`
+остаётся для **не-CLI** режима Аналитика и **не** подменяет CLI-bundle
+в синтетическом smoke выше.
+
+`--run-ids` обязателен всегда для `build-analyst-bundle`: пустой список
+или отсутствующий journal → exit 2 (`RUN_IDS_REQUIRED` / `RUN_NOT_FOUND`).
 
 Fail-safe: любой ненулевой exit или partial bundle → **стоп**, не выдавать
 успешный отчёт с целевыми весами; не затирать прежний `last_target`
@@ -157,7 +199,10 @@ blockers `check-portfolio-ready`; `USER_CSV_TICKERS_MISSING`; ненулевой
 
 ## События радара
 
-- Штатный качественный вход профиля: `news/events_latest.json` (как сейчас).
+- Штатный качественный вход профиля (не-CLI / без ingest): `news/events_latest.json`.
+- **Синтетический smoke Permission A с CLI-ingest:** только  
+  `tests/fixtures/radar_events_cli_bundle_flow.json` + `--test-events`;  
+  рабочий `news/events_latest.json` **не читать**.
 - CLI `ingest-events` — только по отдельной явной команде Даниила; не
   подменять и не дублировать без указания источника в отчёте.
 - Оценки радара (`direction`/`confidence`/`materiality`) **не** входы Max Sharpe.
@@ -173,6 +218,9 @@ blockers `check-portfolio-ready`; `USER_CSV_TICKERS_MISSING`; ненулевой
 - Не рекомендовать сделки никогда; при плохих данных — не предлагать
   «оценить ребалансировку» как действие
 - Не класть реальные CSV в git / публичные handoff
+- В синтетическом smoke с CLI-ingest — не читать `news/events_latest.json`
+- Не вызывать `build-analyst-bundle` без `--run-ids`; не анализировать
+  bundle с пустым / неполным `runs[]` или без ожидаемых `events[]`
 
 ## Формат отчёта
 
