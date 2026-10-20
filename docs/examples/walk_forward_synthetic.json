@@ -1,0 +1,748 @@
+{
+  "disclaimer": "Synthetic prices only. Not an estimate of the Russian market.",
+  "scenarios": {
+    "stable": {
+      "cost_bps_0": {
+        "status": "ok",
+        "performance_sample": "out_of_sample",
+        "parameters": {
+          "train_days": 40,
+          "rebalance_every": 10,
+          "start": null,
+          "end": null,
+          "max_weight": 0.5,
+          "max_top5": null,
+          "risk_free_rate": 0.0,
+          "risk_free_rate_unit": "annual",
+          "cost_bps": 0.0,
+          "initial_capital": 1.0,
+          "cov_method": "sample",
+          "strategies": [
+            "max_sharpe",
+            "min_variance",
+            "equal_weight",
+            "buy_and_hold"
+          ]
+        },
+        "strategies": {
+          "max_sharpe": {
+            "cumulative_net_return": 0.04387995356755847,
+            "cagr": 0.11429300718518265,
+            "annualized_volatility": 0.07287623784792982,
+            "annualized_sharpe": 1.5212993046206758,
+            "max_drawdown": -0.03115599822208104,
+            "one_way_turnover_sum": 3.2182831859297716,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.4532916806860604,
+            "final_value": 1.0438799535675585
+          },
+          "min_variance": {
+            "cumulative_net_return": 0.052960505227635846,
+            "cagr": 0.13888125849318644,
+            "annualized_volatility": 0.06109605110413573,
+            "annualized_sharpe": 2.159335143820082,
+            "max_drawdown": -0.016839815976051664,
+            "one_way_turnover_sum": 2.020569161578357,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.3314064860792559,
+            "final_value": 1.0529605052276358
+          },
+          "equal_weight": {
+            "cumulative_net_return": 0.056035898241736826,
+            "cagr": 0.14728225817011786,
+            "annualized_volatility": 0.05689951245025582,
+            "annualized_sharpe": 2.4435177050763666,
+            "max_drawdown": -0.014896185714186383,
+            "one_way_turnover_sum": 1.0915276767950162,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 1.0560358982417368
+          },
+          "buy_and_hold": {
+            "cumulative_net_return": 0.052887397157258986,
+            "cagr": 0.1386820034559002,
+            "annualized_volatility": 0.057123239250905365,
+            "annualized_sharpe": 2.3023764745763993,
+            "max_drawdown": -0.014902700225608134,
+            "one_way_turnover_sum": 1.0,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 0,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 1.052887397157259
+          }
+        }
+      },
+      "cost_bps_10": {
+        "status": "ok",
+        "performance_sample": "out_of_sample",
+        "parameters": {
+          "train_days": 40,
+          "rebalance_every": 10,
+          "start": null,
+          "end": null,
+          "max_weight": 0.5,
+          "max_top5": null,
+          "risk_free_rate": 0.0,
+          "risk_free_rate_unit": "annual",
+          "cost_bps": 10.0,
+          "initial_capital": 1.0,
+          "cov_method": "sample",
+          "strategies": [
+            "max_sharpe",
+            "min_variance",
+            "equal_weight",
+            "buy_and_hold"
+          ]
+        },
+        "strategies": {
+          "max_sharpe": {
+            "cumulative_net_return": 0.04052496558097207,
+            "cagr": 0.09527687946859542,
+            "annualized_volatility": 0.06955173638772487,
+            "annualized_sharpe": 1.3431008558219766,
+            "max_drawdown": -0.03185130697376348,
+            "one_way_turnover_sum": 3.2182831859297716,
+            "total_cash_cost": 0.0032032834652690207,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.4532916806860604,
+            "final_value": 1.040524965580972
+          },
+          "min_variance": {
+            "cumulative_net_return": 0.05083447786649842,
+            "cagr": 0.12029695272176033,
+            "annualized_volatility": 0.058335380993772494,
+            "annualized_sharpe": 1.9765802167633932,
+            "max_drawdown": -0.016930780952275737,
+            "one_way_turnover_sum": 2.020569161578357,
+            "total_cash_cost": 0.002044726216913109,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.3314064860792559,
+            "final_value": 1.0508344778664984
+          },
+          "equal_weight": {
+            "cumulative_net_return": 0.054883306357069284,
+            "cagr": 0.1302101829269391,
+            "annualized_volatility": 0.054330007159444874,
+            "annualized_sharpe": 2.2804126027433815,
+            "max_drawdown": -0.014901959305253176,
+            "one_way_turnover_sum": 1.0915276767950162,
+            "total_cash_cost": 0.0010937134163277427,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 1.0548833063570693
+          },
+          "buy_and_hold": {
+            "cumulative_net_return": 0.051834509760103176,
+            "cagr": 0.13438346690358993,
+            "annualized_volatility": 0.056887721107470694,
+            "annualized_sharpe": 2.245159058802935,
+            "max_drawdown": -0.014902700225608134,
+            "one_way_turnover_sum": 1.0,
+            "total_cash_cost": 0.001,
+            "formations": 1,
+            "rebalances": 0,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 1.0518345097601032
+          }
+        }
+      }
+    },
+    "regime": {
+      "cost_bps_0": {
+        "status": "ok",
+        "performance_sample": "out_of_sample",
+        "parameters": {
+          "train_days": 40,
+          "rebalance_every": 10,
+          "start": null,
+          "end": null,
+          "max_weight": 0.5,
+          "max_top5": null,
+          "risk_free_rate": 0.0,
+          "risk_free_rate_unit": "annual",
+          "cost_bps": 0.0,
+          "initial_capital": 1.0,
+          "cov_method": "sample",
+          "strategies": [
+            "max_sharpe",
+            "min_variance",
+            "equal_weight",
+            "buy_and_hold"
+          ]
+        },
+        "strategies": {
+          "max_sharpe": {
+            "cumulative_net_return": 0.022701846318777363,
+            "cagr": 0.05819957016978372,
+            "annualized_volatility": 0.16118927303662936,
+            "annualized_sharpe": 0.4305833049004786,
+            "max_drawdown": -0.11415773517376748,
+            "one_way_turnover_sum": 2.581546234153251,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.49829850977328716,
+            "final_value": 1.0227018463187774
+          },
+          "min_variance": {
+            "cumulative_net_return": -0.0463989037539323,
+            "cagr": -0.11283543089120185,
+            "annualized_volatility": 0.1553808770191871,
+            "annualized_sharpe": -0.6933504605318397,
+            "max_drawdown": -0.15912483350181228,
+            "one_way_turnover_sum": 2.101135413398783,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.38797921616166536,
+            "final_value": 0.9536010962460677
+          },
+          "equal_weight": {
+            "cumulative_net_return": -0.028325626927863,
+            "cagr": -0.06985150654298966,
+            "annualized_volatility": 0.15121552467081248,
+            "annualized_sharpe": -0.4039428966138057,
+            "max_drawdown": -0.1366492248798279,
+            "one_way_turnover_sum": 1.1118695230214763,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 0.971674373072137
+          },
+          "buy_and_hold": {
+            "cumulative_net_return": -0.02607227130033163,
+            "cagr": -0.06440614295702274,
+            "annualized_volatility": 0.15087110054766745,
+            "annualized_sharpe": -0.36654648621251684,
+            "max_drawdown": -0.1341131811791597,
+            "one_way_turnover_sum": 1.0,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 0,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 0.9739277286996684
+          }
+        }
+      },
+      "cost_bps_10": {
+        "status": "ok",
+        "performance_sample": "out_of_sample",
+        "parameters": {
+          "train_days": 40,
+          "rebalance_every": 10,
+          "start": null,
+          "end": null,
+          "max_weight": 0.5,
+          "max_top5": null,
+          "risk_free_rate": 0.0,
+          "risk_free_rate_unit": "annual",
+          "cost_bps": 10.0,
+          "initial_capital": 1.0,
+          "cov_method": "sample",
+          "strategies": [
+            "max_sharpe",
+            "min_variance",
+            "equal_weight",
+            "buy_and_hold"
+          ]
+        },
+        "strategies": {
+          "max_sharpe": {
+            "cumulative_net_return": 0.02006434651214173,
+            "cagr": 0.046562031045936925,
+            "annualized_volatility": 0.15364298336013194,
+            "annualized_sharpe": 0.37217280082427323,
+            "max_drawdown": -0.11501827112946472,
+            "one_way_turnover_sum": 2.581546234153251,
+            "total_cash_cost": 0.0025821232510186577,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.49829850977328716,
+            "final_value": 1.0200643465121417
+          },
+          "min_variance": {
+            "cumulative_net_return": -0.048400998071067236,
+            "cagr": -0.10743465248841699,
+            "annualized_volatility": 0.14809085036894168,
+            "annualized_sharpe": -0.6938508821336846,
+            "max_drawdown": -0.1595374171017797,
+            "one_way_turnover_sum": 2.101135413398783,
+            "total_cash_cost": 0.0020726767648519134,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.38797921616166536,
+            "final_value": 0.9515990019289328
+          },
+          "equal_weight": {
+            "cumulative_net_return": -0.029405888034207517,
+            "cagr": -0.0660912595496369,
+            "annualized_volatility": 0.1441204908909243,
+            "annualized_sharpe": -0.402973094700755,
+            "max_drawdown": -0.1366952525847247,
+            "one_way_turnover_sum": 1.1118695230214763,
+            "total_cash_cost": 0.001109802176861811,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 0.9705941119657925
+          },
+          "buy_and_hold": {
+            "cumulative_net_return": -0.027046199029030826,
+            "cagr": -0.06612339245340404,
+            "annualized_volatility": 0.15011991281061834,
+            "annualized_sharpe": -0.3813536982905814,
+            "max_drawdown": -0.13411318117915938,
+            "one_way_turnover_sum": 1.0,
+            "total_cash_cost": 0.001,
+            "formations": 1,
+            "rebalances": 0,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 0.9729538009709692
+          }
+        }
+      }
+    },
+    "crash": {
+      "cost_bps_0": {
+        "status": "ok",
+        "performance_sample": "out_of_sample",
+        "parameters": {
+          "train_days": 40,
+          "rebalance_every": 10,
+          "start": null,
+          "end": null,
+          "max_weight": 0.5,
+          "max_top5": null,
+          "risk_free_rate": 0.0,
+          "risk_free_rate_unit": "annual",
+          "cost_bps": 0.0,
+          "initial_capital": 1.0,
+          "cov_method": "sample",
+          "strategies": [
+            "max_sharpe",
+            "min_variance",
+            "equal_weight",
+            "buy_and_hold"
+          ]
+        },
+        "strategies": {
+          "max_sharpe": {
+            "cumulative_net_return": -0.24209847271293716,
+            "cagr": -0.5026934134780305,
+            "annualized_volatility": 0.2847613942745452,
+            "annualized_sharpe": -2.3060688942471184,
+            "max_drawdown": -0.31720655807007336,
+            "one_way_turnover_sum": 3.9252202344150127,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.4814482753298055,
+            "final_value": 0.7579015272870628
+          },
+          "min_variance": {
+            "cumulative_net_return": -0.2666768514909216,
+            "cagr": -0.5423384850045279,
+            "annualized_volatility": 0.26576943216378535,
+            "annualized_sharpe": -2.8020622290596475,
+            "max_drawdown": -0.3281984719123283,
+            "one_way_turnover_sum": 2.0735985565336432,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.33491516953191264,
+            "final_value": 0.7333231485090784
+          },
+          "equal_weight": {
+            "cumulative_net_return": -0.25693775006701935,
+            "cagr": -0.5268667174368565,
+            "annualized_volatility": 0.260870112220782,
+            "annualized_sharpe": -2.7324846649061727,
+            "max_drawdown": -0.339405112065291,
+            "one_way_turnover_sum": 1.1895022389832102,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 0.7430622499329806
+          },
+          "buy_and_hold": {
+            "cumulative_net_return": -0.26681359970565677,
+            "cagr": -0.5425535202523283,
+            "annualized_volatility": 0.2589388914081346,
+            "annualized_sharpe": -2.8845844943512295,
+            "max_drawdown": -0.33672906518329115,
+            "one_way_turnover_sum": 1.0,
+            "total_cash_cost": 0.0,
+            "formations": 1,
+            "rebalances": 0,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 0.7331864002943432
+          }
+        }
+      },
+      "cost_bps_10": {
+        "status": "ok",
+        "performance_sample": "out_of_sample",
+        "parameters": {
+          "train_days": 40,
+          "rebalance_every": 10,
+          "start": null,
+          "end": null,
+          "max_weight": 0.5,
+          "max_top5": null,
+          "risk_free_rate": 0.0,
+          "risk_free_rate_unit": "annual",
+          "cost_bps": 10.0,
+          "initial_capital": 1.0,
+          "cov_method": "sample",
+          "strategies": [
+            "max_sharpe",
+            "min_variance",
+            "equal_weight",
+            "buy_and_hold"
+          ]
+        },
+        "strategies": {
+          "max_sharpe": {
+            "cumulative_net_return": -0.24506841430063953,
+            "cagr": -0.4748330315507576,
+            "annualized_volatility": 0.2715773293349017,
+            "annualized_sharpe": -2.2313113952818453,
+            "max_drawdown": -0.31807490839985997,
+            "one_way_turnover_sum": 3.9252202344150127,
+            "total_cash_cost": 0.003342981324095793,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.4814482753298055,
+            "final_value": 0.7549315856993605
+          },
+          "min_variance": {
+            "cumulative_net_return": -0.268196318683561,
+            "cagr": -0.5109645601062363,
+            "annualized_volatility": 0.25360134850987565,
+            "annualized_sharpe": -2.6882849446894235,
+            "max_drawdown": -0.32848162044413143,
+            "one_way_turnover_sum": 2.0735985565336432,
+            "total_cash_cost": 0.0018378229304004785,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.33491516953191264,
+            "final_value": 0.731803681316439
+          },
+          "equal_weight": {
+            "cumulative_net_return": -0.2578214719312112,
+            "cagr": -0.4949359191302257,
+            "annualized_volatility": 0.24892994880892264,
+            "annualized_sharpe": -2.614175120506903,
+            "max_drawdown": -0.3394574529449985,
+            "one_way_turnover_sum": 1.1895022389832102,
+            "total_cash_cost": 0.0011531923274423757,
+            "formations": 1,
+            "rebalances": 9,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 0.7421785280687888
+          },
+          "buy_and_hold": {
+            "cumulative_net_return": -0.2675467861059513,
+            "cagr": -0.5401468890262355,
+            "annualized_volatility": 0.257659620923241,
+            "annualized_sharpe": -2.879887816532828,
+            "max_drawdown": -0.33672906518329127,
+            "one_way_turnover_sum": 1.0,
+            "total_cash_cost": 0.001,
+            "formations": 1,
+            "rebalances": 0,
+            "failed_attempt_share": 0.0,
+            "mean_max_weight": 0.25,
+            "final_value": 0.7324532138940487
+          }
+        }
+      }
+    }
+  },
+  "sensitivity_stable": [
+    {
+      "status": "ok",
+      "performance_sample": "out_of_sample",
+      "parameters": {
+        "train_days": 30,
+        "rebalance_every": 5,
+        "start": null,
+        "end": null,
+        "max_weight": 0.5,
+        "max_top5": null,
+        "risk_free_rate": 0.0,
+        "risk_free_rate_unit": "annual",
+        "cost_bps": 0.0,
+        "initial_capital": 1.0,
+        "cov_method": "sample",
+        "strategies": [
+          "max_sharpe",
+          "min_variance",
+          "equal_weight",
+          "buy_and_hold"
+        ]
+      },
+      "strategies": {
+        "max_sharpe": {
+          "cumulative_net_return": 0.07133914439356293,
+          "cagr": 0.1710083055124163,
+          "annualized_volatility": 0.08151241251173649,
+          "annualized_sharpe": 1.9775735915419883,
+          "max_drawdown": -0.01867100648762199,
+          "one_way_turnover_sum": 5.292847232250443,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 21,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.46046240956602863,
+          "final_value": 1.071339144393563
+        },
+        "min_variance": {
+          "cumulative_net_return": 0.04814621063777058,
+          "cagr": 0.1137421201019202,
+          "annualized_volatility": 0.061446826841301296,
+          "annualized_sharpe": 1.7839699942273344,
+          "max_drawdown": -0.01713013537881347,
+          "one_way_turnover_sum": 2.599902246857141,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 21,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.34491179178231257,
+          "final_value": 1.0481462106377706
+        },
+        "equal_weight": {
+          "cumulative_net_return": 0.06437783153460863,
+          "cagr": 0.15364997726502994,
+          "annualized_volatility": 0.058853000460136605,
+          "annualized_sharpe": 2.4584385658013392,
+          "max_drawdown": -0.014841151835110589,
+          "one_way_turnover_sum": 1.1237480798583825,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 21,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.25,
+          "final_value": 1.0643778315346086
+        },
+        "buy_and_hold": {
+          "cumulative_net_return": 0.061806998003022695,
+          "cagr": 0.14727640929372288,
+          "annualized_volatility": 0.05903537599761681,
+          "annualized_sharpe": 2.357129522251773,
+          "max_drawdown": -0.01488921361840545,
+          "one_way_turnover_sum": 1.0,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 0,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.25,
+          "final_value": 1.0618069980030227
+        }
+      },
+      "train_days": 30,
+      "rebalance_every": 5
+    },
+    {
+      "status": "ok",
+      "performance_sample": "out_of_sample",
+      "parameters": {
+        "train_days": 30,
+        "rebalance_every": 20,
+        "start": null,
+        "end": null,
+        "max_weight": 0.5,
+        "max_top5": null,
+        "risk_free_rate": 0.0,
+        "risk_free_rate_unit": "annual",
+        "cost_bps": 0.0,
+        "initial_capital": 1.0,
+        "cov_method": "sample",
+        "strategies": [
+          "max_sharpe",
+          "min_variance",
+          "equal_weight",
+          "buy_and_hold"
+        ]
+      },
+      "strategies": {
+        "max_sharpe": {
+          "cumulative_net_return": 0.07607922400828326,
+          "cagr": 0.1829115541326305,
+          "annualized_volatility": 0.08078830034770192,
+          "annualized_sharpe": 2.1198602070902397,
+          "max_drawdown": -0.027459649105392336,
+          "one_way_turnover_sum": 2.9942976987010295,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 5,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.4812357649995396,
+          "final_value": 1.0760792240082833
+        },
+        "min_variance": {
+          "cumulative_net_return": 0.055227439411024815,
+          "cagr": 0.13105503462487778,
+          "annualized_volatility": 0.06190126092797241,
+          "annualized_sharpe": 2.02061980856515,
+          "max_drawdown": -0.016392608355975335,
+          "one_way_turnover_sum": 1.9448056266613423,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 5,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.341242539995565,
+          "final_value": 1.0552274394110248
+        },
+        "equal_weight": {
+          "cumulative_net_return": 0.06476799224290097,
+          "cagr": 0.154618996444702,
+          "annualized_volatility": 0.05850742240356275,
+          "annualized_sharpe": 2.486974406570076,
+          "max_drawdown": -0.01485815910040511,
+          "one_way_turnover_sum": 1.0747756158061836,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 5,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.25,
+          "final_value": 1.064767992242901
+        },
+        "buy_and_hold": {
+          "cumulative_net_return": 0.061806998003022695,
+          "cagr": 0.14727640929372288,
+          "annualized_volatility": 0.05903537599761681,
+          "annualized_sharpe": 2.357129522251773,
+          "max_drawdown": -0.01488921361840545,
+          "one_way_turnover_sum": 1.0,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 0,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.25,
+          "final_value": 1.0618069980030227
+        }
+      },
+      "train_days": 30,
+      "rebalance_every": 20
+    },
+    {
+      "status": "ok",
+      "performance_sample": "out_of_sample",
+      "parameters": {
+        "train_days": 60,
+        "rebalance_every": 10,
+        "start": null,
+        "end": null,
+        "max_weight": 0.5,
+        "max_top5": null,
+        "risk_free_rate": 0.0,
+        "risk_free_rate_unit": "annual",
+        "cost_bps": 0.0,
+        "initial_capital": 1.0,
+        "cov_method": "sample",
+        "strategies": [
+          "max_sharpe",
+          "min_variance",
+          "equal_weight",
+          "buy_and_hold"
+        ]
+      },
+      "strategies": {
+        "max_sharpe": {
+          "cumulative_net_return": 0.03313557548205326,
+          "cagr": 0.10814233550018448,
+          "annualized_volatility": 0.0750299069447128,
+          "annualized_sharpe": 1.40592589192347,
+          "max_drawdown": -0.026423018107343044,
+          "one_way_turnover_sum": 2.627160733078244,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 7,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.43971636380166185,
+          "final_value": 1.0331355754820533
+        },
+        "min_variance": {
+          "cumulative_net_return": 0.06830071420991146,
+          "cagr": 0.23135870241225143,
+          "annualized_volatility": 0.060081690767463336,
+          "annualized_sharpe": 3.494989595451055,
+          "max_drawdown": -0.009548476718876042,
+          "one_way_turnover_sum": 1.411008935263065,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 7,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.3095357383989419,
+          "final_value": 1.0683007142099115
+        },
+        "equal_weight": {
+          "cumulative_net_return": 0.061473362307423285,
+          "cagr": 0.20673987895300927,
+          "annualized_volatility": 0.05830444222915712,
+          "annualized_sharpe": 3.253093583172156,
+          "max_drawdown": -0.01275615655544815,
+          "one_way_turnover_sum": 1.0740501044101243,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 7,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.25,
+          "final_value": 1.0614733623074233
+        },
+        "buy_and_hold": {
+          "cumulative_net_return": 0.05947353666330679,
+          "cagr": 0.19959281915856297,
+          "annualized_volatility": 0.05836281265890727,
+          "annualized_sharpe": 3.1480423698508906,
+          "max_drawdown": -0.01373205530642907,
+          "one_way_turnover_sum": 1.0,
+          "total_cash_cost": 0.0,
+          "formations": 1,
+          "rebalances": 0,
+          "failed_attempt_share": 0.0,
+          "mean_max_weight": 0.25,
+          "final_value": 1.0594735366633068
+        }
+      },
+      "train_days": 60,
+      "rebalance_every": 10
+    }
+  ]
+}
