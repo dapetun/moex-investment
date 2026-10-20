@@ -59,6 +59,8 @@ def compare_three_objectives(
             "sharpe": opt["sharpe"],
             "volatility": opt["volatility"],
             "success": opt["success"],
+            "weights": [float(x) for x in weights],
+            "train_end": str(train.index[-1]),
             "sample": "in_sample",
         }
         if len(test) >= 2:

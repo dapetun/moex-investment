@@ -7,7 +7,12 @@ import pandas as pd
 import pytest
 
 from moex_portfolio.compare import compare_weights
-from moex_portfolio.measurement_log import append_forecast, brier_score
+from moex_portfolio.measurement_log import (
+    append_forecast,
+    brier_score,
+    register_forecast,
+    resolve_forecast,
+)
 from moex_portfolio.optimizer import (
     InfeasibleWeightConstraints,
     assert_long_only_feasible,
@@ -126,27 +131,60 @@ def test_reference_portfolios_do_not_invent_index():
 def test_forecast_log_rejects_backdating_and_verbal_confidence(tmp_path):
     path = tmp_path / "forecasts.jsonl"
     with pytest.raises(ValueError, match="confidence"):
-        append_forecast(path, {"confidence": "high", "created_at": "2026-01-01T00:00:00Z"})
-    with pytest.raises(ValueError, match="after resolved"):
         append_forecast(
             path,
             {
-                "created_at": "2026-02-01T00:00:00Z",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "probability": 0.7,
-                "outcome": 1,
+                "forecast_id": "f-verb",
+                "confidence": "high",
+                "created_at": "2026-01-01T00:00:00Z",
+                "subject": "AAA",
+                "horizon": "30d",
             },
         )
-    append_forecast(
+    with pytest.raises(ValueError, match="outcome"):
+        append_forecast(
+            path,
+            {
+                "forecast_id": "f-both",
+                "created_at": "2026-01-01T00:00:00Z",
+                "resolved_at": "2026-02-01T00:00:00Z",
+                "probability": 0.7,
+                "outcome": 1,
+                "subject": "AAA",
+                "horizon": "30d",
+            },
+        )
+    register_forecast(
         path,
         {
+            "forecast_id": "f1",
             "created_at": "2026-01-01T00:00:00Z",
-            "resolved_at": "2026-02-01T00:00:00Z",
             "probability": 1.0,
-            "outcome": 1,
+            "subject": "AAA",
             "horizon": "30d",
         },
     )
+    with pytest.raises(ValueError, match="duplicate"):
+        register_forecast(
+            path,
+            {
+                "forecast_id": "f1",
+                "created_at": "2026-01-02T00:00:00Z",
+                "probability": 0.2,
+                "subject": "AAA",
+                "horizon": "30d",
+            },
+        )
+    with pytest.raises(ValueError, match="before created_at"):
+        resolve_forecast(
+            path,
+            forecast_id="f1",
+            resolved_at="2025-12-01T00:00:00Z",
+            outcome=1,
+        )
+    resolve_forecast(path, forecast_id="f1", resolved_at="2026-02-01T00:00:00Z", outcome=1)
+    with pytest.raises(ValueError, match="already resolved"):
+        resolve_forecast(path, forecast_id="f1", resolved_at="2026-03-01T00:00:00Z", outcome=0)
     score = brier_score(path)
     assert score["n"] == 1
     assert score["brier"] == 0.0

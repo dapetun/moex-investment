@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .compare import assess_turnover
 from .config import MAX_WEIGHT
 from .filters import prepare_returns
 from .numeric import (
@@ -32,7 +33,7 @@ from .risk_models import covariance_matrix
 logger = logging.getLogger(__name__)
 
 WEIGHT_SUM_TOLERANCE = 1e-6
-WEIGHT_BOUND_TOLERANCE = 1e-8
+WEIGHT_BOUND_TOLERANCE = 1e-6
 
 
 def _validate_solver_result(
@@ -40,23 +41,42 @@ def _validate_solver_result(
     *,
     max_weight: float,
     metrics: dict[str, float],
+    min_weight: float = 0.0,
+    max_top5: float | None = None,
 ) -> None:
-    """Отклонить некорректный результат solver до записи target."""
+    """Отклонить формальный success, если веса нарушают заявленные лимиты.
+
+    Допуск WEIGHT_BOUND_TOLERANCE относится к границам и к сумме top-5.
+    Сумма весов проверяется с WEIGHT_SUM_TOLERANCE.
+    """
     if not weights:
         raise NumericValidationError("optimizer returned empty weights")
     total = 0.0
+    ordered: list[float] = []
     for ticker, value in weights.items():
         w = require_nonnegative_finite(value, f"weight[{ticker}]")
+        if w + WEIGHT_BOUND_TOLERANCE < min_weight:
+            raise NumericValidationError(
+                f"weight[{ticker}]={w} below min_weight={min_weight}"
+            )
         if w > max_weight + WEIGHT_BOUND_TOLERANCE:
             raise NumericValidationError(
                 f"weight[{ticker}]={w} exceeds max_weight={max_weight}"
             )
+        ordered.append(w)
         total += w
     if abs(total - 1.0) > WEIGHT_SUM_TOLERANCE:
         raise NumericValidationError(
             f"weights sum to {total:.6f}, expected 1.0 "
             f"(tol={WEIGHT_SUM_TOLERANCE})"
         )
+    if max_top5 is not None:
+        top = sum(sorted(ordered, reverse=True)[:5])
+        if top > max_top5 + WEIGHT_BOUND_TOLERANCE:
+            raise NumericValidationError(
+                f"top5 sum {top} exceeds max_top5={max_top5} "
+                f"(tol={WEIGHT_BOUND_TOLERANCE})"
+            )
     for name, value in metrics.items():
         require_finite_number(value, name)
 
@@ -182,7 +202,13 @@ def run_optimize(
     success = False
     if solver_ok:
         try:
-            _validate_solver_result(weights, max_weight=max_weight, metrics=metrics)
+            _validate_solver_result(
+                weights,
+                max_weight=max_weight,
+                min_weight=0.0,
+                max_top5=max_top5,
+                metrics=metrics,
+            )
             success = True
         except NumericValidationError as e:
             message = f"post-solver validation failed: {e}"
@@ -194,13 +220,26 @@ def run_optimize(
         logger.warning(message)
 
     # Веса оставляем в ответе для диагностики; target пишется только при success.
-    turnover = _turnover_block(
-        current_weights or {},
-        weights if success else {},
-        cost_bps=cost_bps,
-        max_turnover=max_turnover,
-        portfolio_value=portfolio_value,
-    )
+    if success:
+        turnover = assess_turnover(
+            current_weights or {},
+            weights,
+            cost_bps=cost_bps,
+            max_turnover=max_turnover,
+            portfolio_value=portfolio_value,
+        )
+    else:
+        turnover = {
+            "status": "optimize_failed",
+            "one_way_identified": False,
+            "gross_abs_weight_change": None,
+            "one_way_turnover": None,
+            "portfolio_share_traded": None,
+            "cash_cost": None,
+            "cash_cost_status": "insufficient_data",
+            "turnover_limit_breached": False,
+            "formula": "not identified",
+        }
     code = None
     if success and turnover.get("turnover_limit_breached"):
         success = False
@@ -239,58 +278,6 @@ def run_optimize(
         "n_observations": int(len(returns)),
         "n_assets": int(returns.shape[1]),
         "turnover": turnover,
-    }
-
-
-def _turnover_block(
-    current: dict[str, float],
-    target: dict[str, float],
-    *,
-    cost_bps: float | None,
-    max_turnover: float | None,
-    portfolio_value: float | None,
-) -> dict[str, Any]:
-    """Развести L1, односторонний оборот и денежные издержки.
-
-    Σ|Δw| — сумма модулей изменения весов.
-    one_way = 0.5 * Σ|Δw| — доля портфеля, которую нужно продать
-    (и столько же купить), если нет отдельного кэша и веса суммируются в 1.
-    Деньги: one_way * portfolio_value * cost_bps/10000, только если оба
-    числа заданы. Иначе cash_cost = null.
-    """
-    names = set(current) | set(target)
-    if not names or not current:
-        return {
-            "status": "no_current_portfolio",
-            "gross_abs_weight_change": None,
-            "one_way_turnover": None,
-            "portfolio_share_traded": None,
-            "cash_cost": None,
-            "cash_cost_status": "insufficient_data",
-            "formula": "one_way = 0.5 * sum(|w_target - w_current|)",
-        }
-    gross = 0.0
-    for name in names:
-        gross += abs(float(target.get(name, 0.0)) - float(current.get(name, 0.0)))
-    one_way = 0.5 * gross
-    cash = None
-    cash_status = "insufficient_data"
-    if cost_bps is not None and portfolio_value is not None:
-        cash = one_way * float(portfolio_value) * float(cost_bps) / 10_000.0
-        cash_status = "estimated"
-    breached = max_turnover is not None and one_way > float(max_turnover) + 1e-12
-    return {
-        "status": "ok",
-        "gross_abs_weight_change": gross,
-        "one_way_turnover": one_way,
-        "portfolio_share_traded": one_way,
-        "cost_bps": cost_bps,
-        "portfolio_value": portfolio_value,
-        "cash_cost": cash,
-        "cash_cost_status": cash_status,
-        "max_turnover": max_turnover,
-        "turnover_limit_breached": breached,
-        "formula": "one_way = 0.5 * sum(|w_target - w_current|); cash = one_way * value * bps/10000",
     }
 
 

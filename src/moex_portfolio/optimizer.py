@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 TOP_K_DEFAULT = 5
 _FEAS_TOL = 1e-12
+SOLVER_TOL = 1e-6
 
 
 class InfeasibleWeightConstraints(ValueError):
@@ -118,6 +119,32 @@ def _top_k_constraints(n: int, max_top5: float, top_k: int = TOP_K_DEFAULT) -> t
             "fun": lambda x, i=i, n=n: x[n + 1 + i] - (x[i] - x[n]),  # t >= w - s
         })
     return cons, extra
+
+
+def policy_violation(
+    weights: np.ndarray,
+    *,
+    min_weight: float,
+    max_weight: float,
+    max_top5: float | None,
+    tol: float = SOLVER_TOL,
+) -> str | None:
+    """Вернуть причину, если веса выходят за лимиты сильнее допуска tol."""
+    w = np.asarray(weights, dtype=float)
+    if w.size == 0 or not np.all(np.isfinite(w)):
+        return "non-finite weights"
+    if np.any(w < min_weight - tol):
+        return "weight below min_weight"
+    if np.any(w > max_weight + tol):
+        return "weight above max_weight"
+    if abs(float(w.sum()) - 1.0) > tol:
+        return "weights do not sum to 1"
+    if max_top5 is not None:
+        k = min(TOP_K_DEFAULT, w.size)
+        top = float(np.sort(w)[::-1][:k].sum())
+        if top > max_top5 + tol:
+            return "top-5 sum above max_top5"
+    return None
 
 
 def concentration_stats(weights: np.ndarray, *, top_k: int = TOP_K_DEFAULT) -> dict:
@@ -227,10 +254,21 @@ def _solve_long_only(
         weights = np.asarray(result.x[:n], dtype=float)
     if not result.success:
         logger.warning("Optimization failed: %s", result.message)
+    violation = policy_violation(
+        weights,
+        min_weight=min_weight,
+        max_weight=max_weight,
+        max_top5=max_top5,
+    )
+    success = bool(result.success) and violation is None
+    message = str(result.message)
+    if violation:
+        message = f"CONSTRAINT_VIOLATION: {violation}; solver said {result.message}"
+        logger.warning(message)
     return {
         "weights": weights,
-        "success": bool(result.success),
-        "message": str(result.message),
+        "success": success,
+        "message": message,
     }
 
 
