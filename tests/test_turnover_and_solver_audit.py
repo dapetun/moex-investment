@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.optimize import minimize
 
 from moex_portfolio.cli import main
 from moex_portfolio.compare import assess_turnover, compare_weights
-from moex_portfolio.metrics import sharpe_ratio
+from moex_portfolio.metrics import portfolio_return, portfolio_volatility, sharpe_ratio
 from moex_portfolio.optimizer import (
     InfeasibleWeightConstraints,
     equal_weight_portfolio,
@@ -24,9 +24,36 @@ from moex_portfolio.reference_portfolios import reference_returns
 from moex_portfolio.risk_models import covariance_matrix
 from moex_portfolio.strategies import compare_three_objectives
 
-PARENT = "d57de5263d17d42a438d9c530d23347a77822611^"
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "data" / "fixtures" / "synthetic_prices.csv"
+
+
+def _legacy_max_sharpe(mean, cov, *, max_weight: float, risk_free_rate: float):
+    """Solver до d57de52 на выполнимом капе: границы не ослабляются, top-5 нет.
+
+    Ветка 1/n в этом вызове не срабатывает, потому что n * max_weight >= 1.
+    """
+    n = len(mean)
+    assert n * max_weight >= 1.0
+
+    def neg_sharpe(w):
+        return -sharpe_ratio(w, mean, cov, risk_free_rate)
+
+    result = minimize(
+        neg_sharpe,
+        np.full(n, 1.0 / n),
+        method="SLSQP",
+        bounds=[(0.0, max_weight)] * n,
+        constraints=[{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}],
+    )
+    weights = np.asarray(result.x, dtype=float)
+    return {
+        "weights": weights,
+        "return": portfolio_return(weights, mean),
+        "volatility": portfolio_volatility(weights, cov),
+        "sharpe": sharpe_ratio(weights, mean, cov, risk_free_rate),
+        "success": bool(result.success),
+    }
 
 
 def _panel(n: int, rows: int = 80, seed: int = 4) -> tuple[pd.Series, pd.DataFrame]:
@@ -133,18 +160,8 @@ def test_failed_optimize_keeps_previous_target(tmp_path, monkeypatch):
 
 
 def test_new_max_sharpe_matches_parent_when_cap_is_feasible():
-    raw = subprocess.check_output(
-        ["git", "show", f"{PARENT}:src/moex_portfolio/optimizer.py"],
-        cwd=ROOT,
-        text=True,
-    )
-    raw = raw.replace("from .config import", "from moex_portfolio.config import")
-    raw = raw.replace("from .metrics import", "from moex_portfolio.metrics import")
-    namespace: dict = {}
-    exec(compile(raw, "optimizer_parent.py", "exec"), namespace)
-    old = namespace["max_sharpe_portfolio"]
     mean, cov = _panel(6, seed=11)
-    legacy = old(mean, cov, max_weight=0.5, risk_free_rate=0.0)
+    legacy = _legacy_max_sharpe(mean, cov, max_weight=0.5, risk_free_rate=0.0)
     current = max_sharpe_portfolio(mean, cov, max_weight=0.5, risk_free_rate=0.0)
     assert current["success"] is True
     assert legacy["success"] is True
