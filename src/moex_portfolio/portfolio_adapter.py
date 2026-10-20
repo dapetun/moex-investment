@@ -123,7 +123,8 @@ def csv_row_to_position(
     if board:
         pos["board"] = board.upper()
 
-    w_raw = _cell(row, "weight", "w", "target_weight")
+    w_raw = _cell(row, "weight", "w")
+    target_w = _cell(row, "target_weight")
     q_raw = _cell(row, "quantity", "shares", "qty", "amount")
     if w_raw is None and q_raw is None:
         raise PortfolioAdapterError(
@@ -135,6 +136,15 @@ def csv_row_to_position(
             pos["weight"] = require_nonnegative_finite(float(w_raw.replace(",", ".")), "weight")
         except (NumericValidationError, ValueError) as e:
             raise PortfolioAdapterError(f"position {ticker}: bad weight: {e}") from e
+    if target_w is not None:
+        try:
+            pos["target_weight"] = require_nonnegative_finite(
+                float(target_w.replace(",", ".")), "target_weight"
+            )
+        except (NumericValidationError, ValueError) as e:
+            raise PortfolioAdapterError(
+                f"position {ticker}: bad target_weight: {e}"
+            ) from e
     if q_raw is not None:
         try:
             pos["shares"] = require_nonnegative_finite(

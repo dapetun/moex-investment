@@ -269,12 +269,25 @@ def cmd_optimize(args: argparse.Namespace) -> int:
             )
 
             holdings = load_holdings()
+            rf_origin = (
+                "cli_flag"
+                if getattr(args, "risk_free_rate", None) is not None
+                else "cli_default_zero"
+            )
             result = run_optimize(
                 prices,
                 max_weight=max_weight,
+                max_top5=getattr(args, "max_top5", None),
+                risk_free_rate=float(args.risk_free_rate or 0.0),
+                risk_free_origin=rf_origin,
                 mode=args.mode,
                 holdings=holdings,
                 min_turnover=min_turnover,
+                objective=getattr(args, "objective", "max_sharpe"),
+                current_weights=current_weights_or_empty(holdings),
+                cost_bps=getattr(args, "cost_bps", None),
+                max_turnover=getattr(args, "max_turnover", None),
+                portfolio_value=getattr(args, "portfolio_value", None),
             )
             result["source"] = src.name
             result["is_live_market"] = bool(qc.get("is_live_market"))
@@ -296,7 +309,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                 result["target_updated"] = True
             else:
                 result["error"] = result.get("message") or "optimizer reported success=false"
-                result["code"] = "OPTIMIZER_FAILED"
+                result["code"] = result.get("code") or "OPTIMIZER_FAILED"
+                result["target_updated"] = False
 
             paths = write_report(
                 run_id=run["run_id"],
@@ -853,6 +867,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="universe=all fixture tickers; holdings=non-empty holdings only",
     )
     p_opt.add_argument("--max-weight", type=float, default=0.5)
+    p_opt.add_argument(
+        "--max-top5",
+        type=float,
+        default=None,
+        help="Optional cap on the sum of the five largest weights",
+    )
+    p_opt.add_argument(
+        "--objective",
+        choices=["max_sharpe", "min_variance", "equal_weight"],
+        default="max_sharpe",
+    )
+    p_opt.add_argument(
+        "--risk-free-rate",
+        type=float,
+        default=None,
+        help="Annual risk-free rate. Omitted means 0.0 (cli_default_zero), not a market quote",
+    )
+    p_opt.add_argument("--cost-bps", type=float, default=None)
+    p_opt.add_argument("--max-turnover", type=float, default=None)
+    p_opt.add_argument(
+        "--portfolio-value",
+        type=float,
+        default=None,
+        help="Portfolio value in currency units; required for a cash cost estimate",
+    )
     p_opt.add_argument(
         "--max-staleness-days",
         type=int,

@@ -20,7 +20,12 @@ from .numeric import (
     require_finite_number,
     require_nonnegative_finite,
 )
-from .optimizer import max_sharpe_portfolio
+from .optimizer import (
+    InfeasibleWeightConstraints,
+    equal_weight_portfolio,
+    max_sharpe_portfolio,
+    min_variance_portfolio,
+)
 from .portfolio_state import HoldingsValidationError, weights_from_holdings
 from .risk_models import covariance_matrix
 
@@ -60,11 +65,18 @@ def run_optimize(
     raw_prices: pd.DataFrame,
     *,
     max_weight: float = MAX_WEIGHT,
+    max_top5: float | None = None,
     risk_free_rate: float = 0.0,
+    risk_free_origin: str = "caller_default_zero",
     cov_method: str = "ledoit_wolf",
     min_turnover: float = 0.0,
     mode: str = "universe",
     holdings: dict[str, Any] | None = None,
+    objective: str = "max_sharpe",
+    current_weights: dict[str, float] | None = None,
+    cost_bps: float | None = None,
+    max_turnover: float | None = None,
+    portfolio_value: float | None = None,
 ) -> dict[str, Any]:
     """Запустить Max Sharpe на подготовленных доходностях.
 
@@ -115,13 +127,46 @@ def run_optimize(
         raise HoldingsValidationError("no valid tickers after filters")
 
     mean_ret = returns.mean()
-    cov = covariance_matrix(returns, method=cov_method)
-    opt = max_sharpe_portfolio(
-        mean_ret,
-        cov,
-        risk_free_rate=risk_free_rate,
-        max_weight=max_weight,
-    )
+    cov_diag: dict[str, Any] = {}
+    cov = covariance_matrix(returns, method=cov_method, diagnostics=cov_diag)
+    solvers = {
+        "max_sharpe": max_sharpe_portfolio,
+        "min_variance": min_variance_portfolio,
+        "equal_weight": equal_weight_portfolio,
+    }
+    if objective not in solvers:
+        raise ValueError(f"unknown objective: {objective}")
+    try:
+        opt = solvers[objective](
+            mean_ret,
+            cov,
+            risk_free_rate=risk_free_rate,
+            max_weight=max_weight,
+            max_top5=max_top5,
+        )
+    except InfeasibleWeightConstraints as e:
+        return {
+            "mode": mode,
+            "objective": objective,
+            "tickers": list(valid),
+            "weights": {},
+            "success": False,
+            "message": str(e),
+            "code": InfeasibleWeightConstraints.code,
+            "risk_free_rate": risk_free_rate,
+            "risk_free_rate_unit": "annual",
+            "risk_free_origin": risk_free_origin,
+            "risk_free_period": "daily_equivalent = annual/252; Sharpe uses annual return and annual rf",
+            "max_weight": max_weight,
+            "max_top5": max_top5,
+            "policy_name": "custom",
+            "cov_method": cov_method,
+            "covariance_diagnostics": cov_diag,
+            "min_turnover": min_turnover,
+            "n_observations": int(len(returns)),
+            "n_assets": int(returns.shape[1]),
+            "target_updated": False,
+        }
 
     # Отсутствующий success ≠ успех (безопасный default).
     solver_ok = opt.get("success") is True
@@ -149,6 +194,21 @@ def run_optimize(
         logger.warning(message)
 
     # Веса оставляем в ответе для диагностики; target пишется только при success.
+    turnover = _turnover_block(
+        current_weights or {},
+        weights if success else {},
+        cost_bps=cost_bps,
+        max_turnover=max_turnover,
+        portfolio_value=portfolio_value,
+    )
+    code = None
+    if success and turnover.get("turnover_limit_breached"):
+        success = False
+        code = "TURNOVER_LIMIT"
+        message = (
+            f"one_way_turnover {turnover['one_way_turnover']} exceeds "
+            f"max_turnover {max_turnover}"
+        )
     return {
         "mode": mode,
         "tickers": valid,
@@ -160,10 +220,77 @@ def run_optimize(
         "sharpe": metrics["sharpe"] if math.isfinite(metrics["sharpe"]) else None,
         "success": success,
         "message": message,
+        "code": code,
         "risk_free_rate": risk_free_rate,
+        "risk_free_rate_unit": "annual",
+        "risk_free_origin": risk_free_origin,
+        "risk_free_period": (
+            "Sharpe = (annual_return - annual_rf) / annual_vol; "
+            "daily_equivalent = annual_rf/252 does not replace that formula"
+        ),
         "max_weight": max_weight,
+        "max_top5": max_top5,
+        "objective": objective,
+        "policy_name": "custom",
+        "concentration": opt.get("concentration"),
         "cov_method": cov_method,
+        "covariance_diagnostics": cov_diag,
         "min_turnover": min_turnover,
+        "n_observations": int(len(returns)),
+        "n_assets": int(returns.shape[1]),
+        "turnover": turnover,
+    }
+
+
+def _turnover_block(
+    current: dict[str, float],
+    target: dict[str, float],
+    *,
+    cost_bps: float | None,
+    max_turnover: float | None,
+    portfolio_value: float | None,
+) -> dict[str, Any]:
+    """Развести L1, односторонний оборот и денежные издержки.
+
+    Σ|Δw| — сумма модулей изменения весов.
+    one_way = 0.5 * Σ|Δw| — доля портфеля, которую нужно продать
+    (и столько же купить), если нет отдельного кэша и веса суммируются в 1.
+    Деньги: one_way * portfolio_value * cost_bps/10000, только если оба
+    числа заданы. Иначе cash_cost = null.
+    """
+    names = set(current) | set(target)
+    if not names or not current:
+        return {
+            "status": "no_current_portfolio",
+            "gross_abs_weight_change": None,
+            "one_way_turnover": None,
+            "portfolio_share_traded": None,
+            "cash_cost": None,
+            "cash_cost_status": "insufficient_data",
+            "formula": "one_way = 0.5 * sum(|w_target - w_current|)",
+        }
+    gross = 0.0
+    for name in names:
+        gross += abs(float(target.get(name, 0.0)) - float(current.get(name, 0.0)))
+    one_way = 0.5 * gross
+    cash = None
+    cash_status = "insufficient_data"
+    if cost_bps is not None and portfolio_value is not None:
+        cash = one_way * float(portfolio_value) * float(cost_bps) / 10_000.0
+        cash_status = "estimated"
+    breached = max_turnover is not None and one_way > float(max_turnover) + 1e-12
+    return {
+        "status": "ok",
+        "gross_abs_weight_change": gross,
+        "one_way_turnover": one_way,
+        "portfolio_share_traded": one_way,
+        "cost_bps": cost_bps,
+        "portfolio_value": portfolio_value,
+        "cash_cost": cash,
+        "cash_cost_status": cash_status,
+        "max_turnover": max_turnover,
+        "turnover_limit_breached": breached,
+        "formula": "one_way = 0.5 * sum(|w_target - w_current|); cash = one_way * value * bps/10000",
     }
 
 

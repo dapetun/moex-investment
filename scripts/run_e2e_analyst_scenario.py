@@ -104,6 +104,8 @@ def main() -> int:
             shutil.copy2(src_path, dst_path)
 
     env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
     env["MOEX_ISS_ENABLED"] = "false"
     env["MOEX_DATA_SOURCE"] = "fixture"
     env["MOEX_FIXTURE_PATH"] = str(clone / "data" / "fixtures" / "synthetic_prices.csv")

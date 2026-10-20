@@ -68,6 +68,8 @@ def compare_weights(
             }
         )
 
+    gross = float(sum(row["drift"] for row in diffs))
+    one_way = 0.5 * gross
     max_abs = require_finite_number(max_abs, "max_abs_drift")
     # Пустой текущий портфель + непустой target — первичное размещение, не ребаланс.
     if not current_c and target_c:
@@ -85,4 +87,10 @@ def compare_weights(
         "min_drift": min_drift_f,
         "diffs": diffs,
         "tickers": tickers,
+        "gross_abs_weight_change": None if not current_c else gross,
+        "one_way_turnover": None if not current_c else one_way,
+        "portfolio_share_traded": None if not current_c else one_way,
+        "turnover_formula": "one_way = 0.5 * sum(|target-current|)",
+        "cash_cost": None,
+        "cash_cost_status": "insufficient_data",
     }
