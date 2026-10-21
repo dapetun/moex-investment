@@ -35,6 +35,13 @@ from .numeric import (
 )
 from .pipeline import current_weights_or_empty, run_optimize
 from .portfolio_adapter import PortfolioAdapterError, adapt_analyst_csv
+from .portfolio_lifecycle import (
+    LifecycleError,
+    fund_plan,
+    load_price_panel,
+    parse_snapshot_csv,
+    propose_allocation,
+)
 from .portfolio_ready import check_portfolio_ready
 from .portfolio_state import HoldingsValidationError, load_holdings, save_holdings
 from .reporting import write_report
@@ -776,6 +783,69 @@ def cmd_compare(args: argparse.Namespace) -> int:
         return 1
 
 
+def _proposal_weights(payload: dict[str, Any], strategy: str) -> dict[str, float]:
+    if "proposals" in payload:
+        return dict(payload["proposals"][strategy]["weights"])
+    return {str(key): float(value) for key, value in payload["weights"].items()}
+
+
+def cmd_propose_portfolio(args: argparse.Namespace) -> int:
+    """Проект распределения. last_target не пишется."""
+    try:
+        prices = load_price_panel(Path(args.prices))
+        tickers = [item.strip().upper() for item in args.tickers.split(",") if item.strip()]
+        result = propose_allocation(
+            prices,
+            tickers,
+            max_weight=args.max_weight,
+            max_top5=args.max_top5,
+            cash_weight=args.cash_weight,
+            risk_free_rate=args.risk_free_rate or 0.0,
+            as_of=args.as_of or None,
+            horizon=args.horizon or None,
+            data_source="synthetic_or_local_file",
+        )
+        _print_json(result)
+        return 0
+    except LifecycleError as exc:
+        _print_json({"error": str(exc), "stage": "proposed"}, stream=sys.stderr)
+        return 2
+
+
+def cmd_fund_plan(args: argparse.Namespace) -> int:
+    """Суммы по уже посчитанным весам. Заявок нет."""
+    try:
+        payload = json.loads(Path(args.weights_json).read_text(encoding="utf-8"))
+        weights = _proposal_weights(payload, args.strategy)
+        prices = json.loads(Path(args.prices_json).read_text(encoding="utf-8")) if args.prices_json else None
+        lots = json.loads(Path(args.lot_sizes_json).read_text(encoding="utf-8")) if args.lot_sizes_json else None
+        result = fund_plan(
+            weights,
+            budget=args.budget,
+            currency=args.currency,
+            cost_bps=args.cost_bps,
+            slippage_bps=args.slippage_bps,
+            prices=prices,
+            lot_sizes=lots,
+        )
+        _print_json(result)
+        return 0 if result["status"] == "funded_plan" else 2
+    except (LifecycleError, KeyError, OSError, json.JSONDecodeError) as exc:
+        _print_json({"error": str(exc), "stage": "funded"}, stream=sys.stderr)
+        return 2
+
+
+def cmd_read_snapshot(args: argparse.Namespace) -> int:
+    """Фактический снимок. Проект и план сюда не записываются."""
+    try:
+        result = parse_snapshot_csv(Path(args.csv), data_source=args.data_source or None)
+        _print_json(result)
+        return 0
+    except LifecycleError as exc:
+        _print_json({"error": str(exc), "stage": "actual"}, stream=sys.stderr)
+        return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="moex_portfolio",
@@ -826,6 +896,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated tickers expected in price panel",
     )
     p_ready.set_defaults(func=cmd_check_portfolio_ready)
+
+    p_prop = sub.add_parser(
+        "propose-portfolio",
+        help="Design a portfolio from a price panel. Does not write holdings or target.",
+    )
+    p_prop.add_argument("--prices", required=True)
+    p_prop.add_argument("--tickers", required=True)
+    p_prop.add_argument("--max-weight", type=float, default=0.5)
+    p_prop.add_argument("--max-top5", type=float, default=None)
+    p_prop.add_argument("--cash-weight", type=float, default=0.0)
+    p_prop.add_argument("--risk-free-rate", type=float, default=None)
+    p_prop.add_argument("--as-of", default="")
+    p_prop.add_argument("--horizon", default="")
+    p_prop.set_defaults(func=cmd_propose_portfolio)
+
+    p_fund = sub.add_parser(
+        "fund-plan",
+        help="Turn proposal weights into planned amounts. Does not place orders.",
+    )
+    p_fund.add_argument("--weights-json", required=True)
+    p_fund.add_argument("--strategy", default="equal_weight")
+    p_fund.add_argument("--budget", type=float, required=True)
+    p_fund.add_argument("--currency", required=True)
+    p_fund.add_argument("--cost-bps", type=float, default=0.0)
+    p_fund.add_argument("--slippage-bps", type=float, default=0.0)
+    p_fund.add_argument("--prices-json", default="")
+    p_fund.add_argument("--lot-sizes-json", default="")
+    p_fund.set_defaults(func=cmd_fund_plan)
+
+    p_snap = sub.add_parser(
+        "read-snapshot",
+        help="Read an actual holdings snapshot. Does not treat a proposal as holdings.",
+    )
+    p_snap.add_argument("--csv", required=True)
+    p_snap.add_argument("--data-source", default="")
+    p_snap.set_defaults(func=cmd_read_snapshot)
 
     p_imp = sub.add_parser(
         "import-user-prices",
