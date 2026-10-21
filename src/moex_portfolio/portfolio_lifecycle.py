@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import csv
+import math
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -414,6 +416,186 @@ def estimate_after_prices(
         "accounted_approximately": (),
         "not_accounted": NOT_ACCOUNTED,
     }
+
+
+def estimate_from_relative_returns(
+    snapshot: dict[str, Any],
+    *,
+    valuation_date: str,
+    total_returns: dict[str, float] | None = None,
+    prices: pd.DataFrame | None = None,
+    price_return_only: bool = False,
+    cash_return: float | None = None,
+    cash_flows: str = "none",
+    corporate_actions: str = "unknown",
+) -> dict[str, Any]:
+    """Переоценить доли. Количество и стоимость не создаются.
+
+    new_weight_i = old_weight_i * (1 + r_i) / sum(old_weight_j * (1 + r_j)).
+    Кэш — отдельный актив со своей доходностью, не остаток «по умолчанию».
+    """
+    if snapshot.get("stage") != "actual":
+        raise LifecycleError("estimate requires an actual snapshot (code=ESTIMATE_NOT_ACTUAL)")
+    snapshot_date = _iso_day(str(snapshot.get("as_of") or ""))
+    valuation_day = _iso_day(valuation_date)
+    if valuation_day < snapshot_date:
+        raise LifecycleError("valuation date is before the snapshot (code=ESTIMATE_BAD_DATES)")
+    if cash_flows != "none":
+        raise LifecycleError("cash flows are not in this estimate (code=ESTIMATE_CASH_FLOWS)")
+    currency = snapshot.get("currency")
+    if currency is None:
+        raise LifecycleError("currency is required (code=ESTIMATE_CURRENCY)")
+    positions = list(snapshot.get("positions") or [])
+    if not positions or any("weight" not in pos for pos in positions):
+        raise LifecycleError("snapshot needs weights (code=ESTIMATE_WEIGHTS_MISSING)")
+    for pos in positions:
+        pos_currency = pos.get("currency")
+        if pos_currency is not None and str(pos_currency).upper() != str(currency).upper():
+            raise LifecycleError(
+                f"{pos['secid']}: currency conversion is not applied (code=ESTIMATE_FX)"
+            )
+    weight_sum = sum(float(pos["weight"]) for pos in positions)
+    if not math.isfinite(weight_sum) or abs(weight_sum - 1.0) > TOL:
+        raise LifecycleError(
+            f"weights sum to {weight_sum}, expected 1 within {TOL} (code=ESTIMATE_WEIGHT_SUM)"
+        )
+    returns, method_note = _resolve_returns(
+        positions,
+        snapshot_date=snapshot_date,
+        valuation_date=valuation_day,
+        total_returns=total_returns,
+        prices=prices,
+        price_return_only=price_return_only,
+        cash_return=cash_return,
+        corporate_actions=corporate_actions,
+    )
+    weighted = []
+    denominator = 0.0
+    for pos in positions:
+        gross = 1.0 + returns[pos["secid"]]
+        if not math.isfinite(gross) or gross < 0:
+            raise LifecycleError(f"{pos['secid']}: gross return is negative (code=ESTIMATE_BAD_RETURN)")
+        contribution = float(pos["weight"]) * gross
+        denominator += contribution
+        weighted.append((pos, gross, contribution))
+    if denominator <= TOL:
+        raise LifecycleError("portfolio gross return is not positive (code=ESTIMATE_BAD_RETURN)")
+    estimated = []
+    for pos, gross, contribution in weighted:
+        estimated.append({
+            "secid": pos["secid"],
+            "previous_weight": float(pos["weight"]),
+            "gross_return": gross,
+            "estimated_weight": contribution / denominator,
+        })
+    assumptions = [
+        "single currency, no fx conversion",
+        "no contributions, withdrawals, or trades since the snapshot",
+        "cash is an asset with its own supplied return",
+        method_note,
+    ]
+    not_accounted = ["fx_moves", "contributions_and_withdrawals", "trades_since_snapshot"]
+    if corporate_actions == "none":
+        assumptions.append("no share-count corporate actions declared for this window")
+    elif corporate_actions == "adjusted_in_prices":
+        assumptions.append("prices are declared adjusted for share-count corporate actions")
+    else:
+        not_accounted.insert(0, "share_count_changes")
+    if price_return_only:
+        not_accounted = ["dividends", "coupons", "other_distributions", *not_accounted]
+    return {
+        "stage": "actual",
+        "estimated": True,
+        "estimation_method": "relative_returns",
+        "weight_status": "estimated",
+        "status": "estimated_from_relative_returns",
+        "as_of": valuation_day,
+        "snapshot_as_of": snapshot_date,
+        "currency": snapshot["currency"],
+        "positions": estimated,
+        "assumptions": assumptions,
+        "not_accounted": not_accounted,
+    }
+
+
+def _resolve_returns(
+    positions: list[dict[str, Any]],
+    *,
+    snapshot_date: str,
+    valuation_date: str,
+    total_returns: dict[str, float] | None,
+    prices: pd.DataFrame | None,
+    price_return_only: bool,
+    cash_return: float | None,
+    corporate_actions: str,
+) -> tuple[dict[str, float], str]:
+    needed = [pos["secid"] for pos in positions]
+    if total_returns is not None and prices is not None:
+        raise LifecycleError("pass returns or a price panel, not both (code=ESTIMATE_RETURN_SOURCE)")
+    if total_returns is not None:
+        missing = [secid for secid in needed if secid not in total_returns]
+        if missing:
+            raise LifecycleError(f"missing returns: {missing} (code=ESTIMATE_RETURN_MISSING)")
+        resolved = {secid: float(total_returns[secid]) for secid in needed}
+        if CASH in resolved and cash_return is not None and abs(resolved[CASH] - float(cash_return)) > TOL:
+            raise LifecycleError("cash return disagrees with the returns map (code=ESTIMATE_CASH_RETURN)")
+        return resolved, "returns supplied by the user"
+    if prices is None:
+        raise LifecycleError("returns or a price panel are required (code=ESTIMATE_RETURN_MISSING)")
+    if not price_return_only:
+        raise LifecycleError(
+            "price panel is a price return and omits dividends and coupons "
+            "(code=ESTIMATE_PRICE_RETURN_UNACKNOWLEDGED)"
+        )
+    if corporate_actions not in ("none", "adjusted_in_prices"):
+        raise LifecycleError(
+            "price panel needs a corporate-action declaration "
+            "(code=ESTIMATE_CORPORATE_ACTIONS)"
+        )
+    out: dict[str, float] = {}
+    for secid in needed:
+        if secid == CASH:
+            if cash_return is None:
+                raise LifecycleError("cash return must be supplied explicitly (code=ESTIMATE_CASH_RETURN)")
+            out[secid] = float(cash_return)
+            continue
+        if secid not in prices.columns:
+            raise LifecycleError(f"missing prices for {secid} (code=ESTIMATE_RETURN_MISSING)")
+        out[secid] = _window_price_return(prices[secid], snapshot_date, valuation_date, secid)
+    return out, "price return only: dividends, coupons, and similar payouts are not included"
+
+
+def _iso_day(value: str) -> str:
+    try:
+        return date.fromisoformat(value).isoformat()
+    except ValueError as exc:
+        raise LifecycleError(f"bad date {value} (code=ESTIMATE_BAD_DATES)") from exc
+
+
+def _window_price_return(series: pd.Series, start: str, end: str, secid: str) -> float:
+    """Цена на дату снимка и цену на дату оценки. Пропуск внутри окна не заполняется."""
+    index = pd.to_datetime(series.index)
+    if bool(index.isna().any()):
+        raise LifecycleError(f"{secid}: price dates do not cover {start} (code=ESTIMATE_BAD_DATES)")
+    days = pd.Index(index.strftime("%Y-%m-%d"))
+    positions = np.flatnonzero((days >= start) & (days <= end))
+    if len(positions) == 0:
+        raise LifecycleError(f"{secid}: price dates do not cover {start} (code=ESTIMATE_BAD_DATES)")
+    window_days = days[positions]
+    values = pd.to_numeric(series.iloc[positions], errors="coerce").to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise LifecycleError(
+            f"{secid}: price series has a gap between {start} and {end} (code=ESTIMATE_BAD_DATES)"
+        )
+    start_hits = values[np.flatnonzero(window_days == start)]
+    end_hits = values[np.flatnonzero(window_days == end)]
+    if len(start_hits) != 1 or len(end_hits) != 1:
+        raise LifecycleError(
+            f"{secid}: price dates do not cover {start}..{end} (code=ESTIMATE_BAD_DATES)"
+        )
+    if float(start_hits[0]) <= 0:
+        raise LifecycleError(f"{secid}: bad start price (code=ESTIMATE_BAD_RETURN)")
+    return float(end_hits[0]) / float(start_hits[0]) - 1.0
 
 
 def load_price_panel(path: Path) -> pd.DataFrame:

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 
+import pandas as pd
 import pytest
 
 from moex_portfolio.cli import main
 from moex_portfolio.portfolio_lifecycle import (
     LifecycleError,
     estimate_after_prices,
+    estimate_from_relative_returns,
     fund_plan,
     parse_snapshot_csv,
     propose_allocation,
@@ -164,6 +166,182 @@ def test_estimate_marks_missing_corporate_actions():
     assert aaa["estimated_weight"] == pytest.approx(0.6)
 
 
+def _weight_snapshot() -> dict:
+    return {
+        "stage": "actual",
+        "as_of": "2026-01-01",
+        "currency": "RUB",
+        "weight_basis": "weight",
+        "positions": [
+            {"secid": "AAA", "weight": 0.5},
+            {"secid": "BBB", "weight": 0.3},
+            {"secid": "CASH", "weight": 0.2},
+        ],
+    }
+
+
+def test_relative_revaluation_keeps_sum_and_cash_identity():
+    snapshot = _weight_snapshot()
+    same = estimate_from_relative_returns(
+        snapshot,
+        valuation_date="2026-02-01",
+        total_returns={"AAA": 0.1, "BBB": 0.1, "CASH": 0.1},
+    )
+    assert same["estimated"] is True
+    assert same["estimation_method"] == "relative_returns"
+    assert abs(sum(pos["estimated_weight"] for pos in same["positions"]) - 1) < 1e-12
+    for pos in same["positions"]:
+        assert pos["estimated_weight"] == pytest.approx(pos["previous_weight"])
+        assert "quantity" not in pos
+        assert "market_value" not in pos
+    grown = estimate_from_relative_returns(
+        snapshot,
+        valuation_date="2026-02-01",
+        total_returns={"AAA": 1.0, "BBB": 0.0, "CASH": 0.0},
+    )
+    weights = {pos["secid"]: pos["estimated_weight"] for pos in grown["positions"]}
+    assert weights["AAA"] > 0.5
+    assert weights["CASH"] < 0.2
+    assert weights["CASH"] == pytest.approx(0.2 / 1.5)
+    cash_up = estimate_from_relative_returns(
+        snapshot,
+        valuation_date="2026-02-01",
+        total_returns={"AAA": 0.0, "BBB": 0.0, "CASH": 1.0},
+    )
+    cash_weight = next(pos["estimated_weight"] for pos in cash_up["positions"] if pos["secid"] == "CASH")
+    assert cash_weight == pytest.approx(0.4 / 1.2)
+    assert cash_weight > 0.2
+    with pytest.raises(LifecycleError, match="ESTIMATE_BAD_DATES"):
+        estimate_from_relative_returns(
+            snapshot,
+            valuation_date="2025-12-01",
+            total_returns={"AAA": 0.0, "BBB": 0.0, "CASH": 0.0},
+        )
+    with pytest.raises(LifecycleError, match="ESTIMATE_RETURN_MISSING"):
+        estimate_from_relative_returns(
+            snapshot,
+            valuation_date="2026-02-01",
+            total_returns={"AAA": 0.0, "BBB": 0.0},
+        )
+    broken = _weight_snapshot()
+    broken["positions"][0]["weight"] = 0.6
+    with pytest.raises(LifecycleError, match="ESTIMATE_WEIGHT_SUM"):
+        estimate_from_relative_returns(
+            broken,
+            valuation_date="2026-02-01",
+            total_returns={"AAA": 0.0, "BBB": 0.0, "CASH": 0.0},
+        )
+    mixed = _weight_snapshot()
+    mixed["positions"][0]["currency"] = "USD"
+    with pytest.raises(LifecycleError, match="ESTIMATE_FX"):
+        estimate_from_relative_returns(
+            mixed,
+            valuation_date="2026-02-01",
+            total_returns={"AAA": 0.0, "BBB": 0.0, "CASH": 0.0},
+        )
+
+
+def test_price_return_requires_explicit_warning():
+    idx = pd.bdate_range("2026-01-01", periods=2)
+    prices = pd.DataFrame({"AAA": [100.0, 110.0], "BBB": [50.0, 50.0]}, index=idx)
+    snapshot = {
+        "stage": "actual",
+        "as_of": "2026-01-01",
+        "currency": "RUB",
+        "positions": [{"secid": "AAA", "weight": 0.5}, {"secid": "BBB", "weight": 0.5}],
+    }
+    with pytest.raises(LifecycleError, match="ESTIMATE_PRICE_RETURN_UNACKNOWLEDGED"):
+        estimate_from_relative_returns(
+            snapshot,
+            valuation_date="2026-01-02",
+            prices=prices,
+            corporate_actions="none",
+        )
+    with pytest.raises(LifecycleError, match="ESTIMATE_CORPORATE_ACTIONS"):
+        estimate_from_relative_returns(
+            snapshot,
+            valuation_date="2026-01-02",
+            prices=prices,
+            price_return_only=True,
+        )
+    estimated = estimate_from_relative_returns(
+        snapshot,
+        valuation_date="2026-01-02",
+        prices=prices,
+        price_return_only=True,
+        corporate_actions="none",
+    )
+    aaa = next(pos for pos in estimated["positions"] if pos["secid"] == "AAA")
+    assert aaa["estimated_weight"] == pytest.approx(0.55 / 1.05)
+    assert "quantity" not in aaa and "market_value" not in aaa
+    assert "dividends" in estimated["not_accounted"]
+    assert any("price return only" in item for item in estimated["assumptions"])
+    assert "share_count_changes" not in estimated["not_accounted"]
+
+
+def test_gap_is_refused_cash_is_explicit_and_zero_gross_is_kept():
+    snapshot = _weight_snapshot()
+    wiped = estimate_from_relative_returns(
+        snapshot,
+        valuation_date="2026-02-01",
+        total_returns={"AAA": -1.0, "BBB": 0.0, "CASH": 0.0},
+    )
+    weights = {pos["secid"]: pos["estimated_weight"] for pos in wiped["positions"]}
+    assert weights["AAA"] == 0.0
+    assert weights["BBB"] == pytest.approx(0.6)
+    assert weights["CASH"] == pytest.approx(0.4)
+    assert abs(sum(weights.values()) - 1) < 1e-12
+    with pytest.raises(LifecycleError, match="ESTIMATE_BAD_RETURN"):
+        estimate_from_relative_returns(
+            snapshot,
+            valuation_date="2026-02-01",
+            total_returns={"AAA": -1.01, "BBB": 0.0, "CASH": 0.0},
+        )
+    gappy = pd.DataFrame(
+        {"AAA": [100.0, float("nan"), 130.0], "BBB": [50.0, 50.0, 50.0]},
+        index=pd.to_datetime(["2026-01-01", "2026-01-02", "2026-01-05"]),
+    )
+    book = {
+        "stage": "actual",
+        "as_of": "2026-01-01",
+        "currency": "RUB",
+        "positions": [{"secid": "AAA", "weight": 0.5}, {"secid": "BBB", "weight": 0.5}],
+    }
+    with pytest.raises(LifecycleError, match="ESTIMATE_BAD_DATES"):
+        estimate_from_relative_returns(
+            book,
+            valuation_date="2026-01-05",
+            prices=gappy,
+            price_return_only=True,
+            corporate_actions="none",
+        )
+    spanned = pd.DataFrame(
+        {"AAA": [100.0, 110.0], "BBB": [40.0, 40.0]},
+        index=pd.to_datetime(["2026-01-01", "2026-01-05"]),
+    )
+    estimated = estimate_from_relative_returns(
+        book,
+        valuation_date="2026-01-05",
+        prices=spanned,
+        price_return_only=True,
+        corporate_actions="none",
+    )
+    aaa = next(pos for pos in estimated["positions"] if pos["secid"] == "AAA")
+    assert aaa["gross_return"] == pytest.approx(1.1)
+    priced = pd.DataFrame(
+        {"AAA": [100.0, 110.0], "BBB": [40.0, 40.0]},
+        index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+    )
+    with pytest.raises(LifecycleError, match="ESTIMATE_CASH_RETURN"):
+        estimate_from_relative_returns(
+            snapshot,
+            valuation_date="2026-01-02",
+            prices=priced,
+            price_return_only=True,
+            corporate_actions="none",
+        )
+
+
 def test_propose_command_does_not_write_target(tmp_path, monkeypatch):
     prices = tmp_path / "prices.csv"
     frame = _prices()
@@ -181,4 +359,45 @@ def test_propose_command_does_not_write_target(tmp_path, monkeypatch):
         "0.5",
     ])
     assert code == 0
+    assert json.loads(target.read_text(encoding="utf-8")) == {"untouched": True}
+
+
+def test_estimate_weights_command_does_not_write_target(tmp_path, monkeypatch, capsys):
+    snapshot = tmp_path / "snapshot.json"
+    returns = tmp_path / "returns.json"
+    snapshot.write_text(json.dumps(_weight_snapshot()), encoding="utf-8")
+    returns.write_text(json.dumps({"AAA": 0.0, "BBB": 0.0, "CASH": 0.0}), encoding="utf-8")
+    target = tmp_path / "last_target.json"
+    target.write_text('{"untouched": true}', encoding="utf-8")
+    monkeypatch.setattr("moex_portfolio.cli.LAST_TARGET_PATH", target)
+    code = main([
+        "estimate-weights",
+        "--snapshot-json",
+        str(snapshot),
+        "--valuation-date",
+        "2026-02-01",
+        "--returns-json",
+        str(returns),
+    ])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["estimated"] is True
+    assert payload["estimation_method"] == "relative_returns"
+    assert payload["as_of"] == "2026-02-01"
+    assert abs(sum(pos["estimated_weight"] for pos in payload["positions"]) - 1) < 1e-12
+    assert all("quantity" not in pos and "market_value" not in pos for pos in payload["positions"])
+    assert json.loads(target.read_text(encoding="utf-8")) == {"untouched": True}
+    code = main([
+        "estimate-weights",
+        "--snapshot-json",
+        str(snapshot),
+        "--valuation-date",
+        "2025-12-01",
+        "--returns-json",
+        str(returns),
+    ])
+    assert code == 2
+    err = json.loads(capsys.readouterr().err)
+    assert err["estimated"] is False
+    assert "ESTIMATE_BAD_DATES" in err["error"]
     assert json.loads(target.read_text(encoding="utf-8")) == {"untouched": True}

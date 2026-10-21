@@ -37,6 +37,7 @@ from .pipeline import current_weights_or_empty, run_optimize
 from .portfolio_adapter import PortfolioAdapterError, adapt_analyst_csv
 from .portfolio_lifecycle import (
     LifecycleError,
+    estimate_from_relative_returns,
     fund_plan,
     load_price_panel,
     parse_snapshot_csv,
@@ -835,6 +836,28 @@ def cmd_fund_plan(args: argparse.Namespace) -> int:
         return 2
 
 
+def cmd_estimate_weights(args: argparse.Namespace) -> int:
+    """Оценка долей. last_target и количества не создаются."""
+    try:
+        snapshot = json.loads(Path(args.snapshot_json).read_text(encoding="utf-8"))
+        returns = json.loads(Path(args.returns_json).read_text(encoding="utf-8")) if args.returns_json else None
+        prices = load_price_panel(Path(args.prices)) if args.prices else None
+        result = estimate_from_relative_returns(
+            snapshot,
+            valuation_date=args.valuation_date,
+            total_returns=returns,
+            prices=prices,
+            price_return_only=bool(args.price_return_only),
+            cash_return=args.cash_return,
+            corporate_actions=args.corporate_actions or "unknown",
+        )
+        _print_json(result)
+        return 0
+    except LifecycleError as exc:
+        _print_json({"error": str(exc), "stage": "actual", "estimated": False}, stream=sys.stderr)
+        return 2
+
+
 def cmd_read_snapshot(args: argparse.Namespace) -> int:
     """Фактический снимок. Проект и план сюда не записываются."""
     try:
@@ -932,6 +955,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_snap.add_argument("--csv", required=True)
     p_snap.add_argument("--data-source", default="")
     p_snap.set_defaults(func=cmd_read_snapshot)
+
+    p_est = sub.add_parser(
+        "estimate-weights",
+        help="Revalue weight-only holdings from relative returns. Does not invent quantities.",
+    )
+    p_est.add_argument("--snapshot-json", required=True)
+    p_est.add_argument("--valuation-date", required=True)
+    p_est.add_argument("--returns-json", default="")
+    p_est.add_argument("--prices", default="")
+    p_est.add_argument("--price-return-only", action="store_true")
+    p_est.add_argument("--cash-return", type=float, default=None)
+    p_est.add_argument(
+        "--corporate-actions",
+        default="",
+        choices=("", "none", "adjusted_in_prices"),
+        help="Required with --prices: none, or adjusted_in_prices",
+    )
+    p_est.set_defaults(func=cmd_estimate_weights)
 
     p_imp = sub.add_parser(
         "import-user-prices",
