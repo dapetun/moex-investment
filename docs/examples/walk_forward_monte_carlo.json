@@ -1,7 +1,7 @@
 {
-  "code_sha": "bbdd4b24daa7b94cb31c5e39e0dbc982d431be6e",
+  "code_sha": "8dfea581853701ac0277cc9fa89c54b57b44b2bb",
   "disclaimer": "30 independent synthetic paths per scenario. Not 30 years of the Russian market and not a selected subset.",
-  "execution_model": "same close, no spread, no slippage",
+  "execution_model": "same close, no spread, no slippage; realistic_execution=false",
   "scenarios": {
     "stable": {
       "cost_bps_0": {
@@ -61,7 +61,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.007875970076692107,
-            "share_of_runs_ahead_of_equal_weight": 0.6
+            "share_of_runs_ahead_of_equal_weight": 0.6,
+            "difference_of_medians_vs_equal_weight": -0.007545787695536044
           },
           "min_variance": {
             "median_cumulative_net_return": 0.022450290943973772,
@@ -74,7 +75,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.0035586149658771715,
-            "share_of_runs_ahead_of_equal_weight": 0.4
+            "share_of_runs_ahead_of_equal_weight": 0.4,
+            "difference_of_medians_vs_equal_weight": 3.346802336900989e-05
           },
           "equal_weight": {
             "median_cumulative_net_return": 0.022416822920604762,
@@ -87,7 +89,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.0,
-            "share_of_runs_ahead_of_equal_weight": null
+            "share_of_runs_ahead_of_equal_weight": null,
+            "difference_of_medians_vs_equal_weight": 0.0
           },
           "buy_and_hold": {
             "median_cumulative_net_return": 0.02271903460528979,
@@ -100,7 +103,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 6.507502019859057e-05,
-            "share_of_runs_ahead_of_equal_weight": 0.5333333333333333
+            "share_of_runs_ahead_of_equal_weight": 0.5333333333333333,
+            "difference_of_medians_vs_equal_weight": 0.00030221168468502757
           }
         },
         "warning": "Independent synthetic paths, not independent years of a real market."
@@ -162,7 +166,8 @@
             "median_cash_cost": 0.0023352630066689898,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.0064596984259691625,
-            "share_of_runs_ahead_of_equal_weight": 0.6
+            "share_of_runs_ahead_of_equal_weight": 0.6,
+            "difference_of_medians_vs_equal_weight": -0.008314250177324567
           },
           "min_variance": {
             "median_cumulative_net_return": 0.020670221479472617,
@@ -175,7 +180,8 @@
             "median_cash_cost": 0.0016937169881822154,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.0043402721188388615,
-            "share_of_runs_ahead_of_equal_weight": 0.36666666666666664
+            "share_of_runs_ahead_of_equal_weight": 0.36666666666666664,
+            "difference_of_medians_vs_equal_weight": -0.000673930192690797
           },
           "equal_weight": {
             "median_cumulative_net_return": 0.021344151672163414,
@@ -188,7 +194,8 @@
             "median_cash_cost": 0.001041622116717043,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.0,
-            "share_of_runs_ahead_of_equal_weight": null
+            "share_of_runs_ahead_of_equal_weight": null,
+            "difference_of_medians_vs_equal_weight": 0.0
           },
           "buy_and_hold": {
             "median_cumulative_net_return": 0.021696315570684965,
@@ -201,7 +208,8 @@
             "median_cash_cost": 0.001,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.0001055193365258611,
-            "share_of_runs_ahead_of_equal_weight": 0.5666666666666667
+            "share_of_runs_ahead_of_equal_weight": 0.5666666666666667,
+            "difference_of_medians_vs_equal_weight": 0.0003521638985215514
           }
         },
         "warning": "Independent synthetic paths, not independent years of a real market."
@@ -265,7 +273,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.0028339070893122487,
-            "share_of_runs_ahead_of_equal_weight": 0.5
+            "share_of_runs_ahead_of_equal_weight": 0.5,
+            "difference_of_medians_vs_equal_weight": -0.0275421001126383
           },
           "min_variance": {
             "median_cumulative_net_return": 0.029609871390191445,
@@ -278,7 +287,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.007839398783792584,
-            "share_of_runs_ahead_of_equal_weight": 0.4
+            "share_of_runs_ahead_of_equal_weight": 0.4,
+            "difference_of_medians_vs_equal_weight": -0.004088860157517082
           },
           "equal_weight": {
             "median_cumulative_net_return": 0.03369873154770853,
@@ -291,7 +301,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.0,
-            "share_of_runs_ahead_of_equal_weight": null
+            "share_of_runs_ahead_of_equal_weight": null,
+            "difference_of_medians_vs_equal_weight": 0.0
           },
           "buy_and_hold": {
             "median_cumulative_net_return": 0.03315628986877994,
@@ -304,7 +315,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -7.349738753659185e-06,
-            "share_of_runs_ahead_of_equal_weight": 0.5
+            "share_of_runs_ahead_of_equal_weight": 0.5,
+            "difference_of_medians_vs_equal_weight": -0.0005424416789285846
           }
         },
         "warning": "Independent synthetic paths, not independent years of a real market."
@@ -366,7 +378,8 @@
             "median_cash_cost": 0.002715126527305116,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.0046828500059929445,
-            "share_of_runs_ahead_of_equal_weight": 0.4666666666666667
+            "share_of_runs_ahead_of_equal_weight": 0.4666666666666667,
+            "difference_of_medians_vs_equal_weight": -0.02942429384236922
           },
           "min_variance": {
             "median_cumulative_net_return": 0.02776100718190222,
@@ -379,7 +392,8 @@
             "median_cash_cost": 0.002006071033977817,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.008641515301600955,
-            "share_of_runs_ahead_of_equal_weight": 0.4
+            "share_of_runs_ahead_of_equal_weight": 0.4,
+            "difference_of_medians_vs_equal_weight": -0.00484584310754943
           },
           "equal_weight": {
             "median_cumulative_net_return": 0.03260685028945165,
@@ -392,7 +406,8 @@
             "median_cash_cost": 0.0010569335897332927,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.0,
-            "share_of_runs_ahead_of_equal_weight": null
+            "share_of_runs_ahead_of_equal_weight": null,
+            "difference_of_medians_vs_equal_weight": 0.0
           },
           "buy_and_hold": {
             "median_cumulative_net_return": 0.03212313357891128,
@@ -405,7 +420,8 @@
             "median_cash_cost": 0.001,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 4.4414165084716295e-05,
-            "share_of_runs_ahead_of_equal_weight": 0.5
+            "share_of_runs_ahead_of_equal_weight": 0.5,
+            "difference_of_medians_vs_equal_weight": -0.0004837167105403717
           }
         },
         "warning": "Independent synthetic paths, not independent years of a real market."
@@ -469,7 +485,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.017184552762946836,
-            "share_of_runs_ahead_of_equal_weight": 0.4
+            "share_of_runs_ahead_of_equal_weight": 0.4,
+            "difference_of_medians_vs_equal_weight": -0.01007640347858857
           },
           "min_variance": {
             "median_cumulative_net_return": -0.2440257438896521,
@@ -482,7 +499,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.00742034733186675,
-            "share_of_runs_ahead_of_equal_weight": 0.5333333333333333
+            "share_of_runs_ahead_of_equal_weight": 0.5333333333333333,
+            "difference_of_medians_vs_equal_weight": 0.009571851810331877
           },
           "equal_weight": {
             "median_cumulative_net_return": -0.25359759569998397,
@@ -495,7 +513,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.0,
-            "share_of_runs_ahead_of_equal_weight": null
+            "share_of_runs_ahead_of_equal_weight": null,
+            "difference_of_medians_vs_equal_weight": 0.0
           },
           "buy_and_hold": {
             "median_cumulative_net_return": -0.2543906635588705,
@@ -508,7 +527,8 @@
             "median_cash_cost": 0.0,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.0005039314594004751,
-            "share_of_runs_ahead_of_equal_weight": 0.4
+            "share_of_runs_ahead_of_equal_weight": 0.4,
+            "difference_of_medians_vs_equal_weight": -0.0007930678588865536
           }
         },
         "warning": "Independent synthetic paths, not independent years of a real market."
@@ -570,7 +590,8 @@
             "median_cash_cost": 0.0022972565685639964,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.017827575901804227,
-            "share_of_runs_ahead_of_equal_weight": 0.4
+            "share_of_runs_ahead_of_equal_weight": 0.4,
+            "difference_of_medians_vs_equal_weight": -0.011149130994593914
           },
           "min_variance": {
             "median_cumulative_net_return": -0.24543275078820387,
@@ -583,7 +604,8 @@
             "median_cash_cost": 0.001826896296213059,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.006789101350324511,
-            "share_of_runs_ahead_of_equal_weight": 0.5333333333333333
+            "share_of_runs_ahead_of_equal_weight": 0.5333333333333333,
+            "difference_of_medians_vs_equal_weight": 0.008992433231001795
           },
           "equal_weight": {
             "median_cumulative_net_return": -0.25442518401920566,
@@ -596,7 +618,8 @@
             "median_cash_cost": 0.001087643570284944,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": 0.0,
-            "share_of_runs_ahead_of_equal_weight": null
+            "share_of_runs_ahead_of_equal_weight": null,
+            "difference_of_medians_vs_equal_weight": 0.0
           },
           "buy_and_hold": {
             "median_cumulative_net_return": -0.25513627289531154,
@@ -609,11 +632,20 @@
             "median_cash_cost": 0.001,
             "median_failed_attempt_share": 0.0,
             "median_excess_vs_equal_weight": -0.00042314970879225866,
-            "share_of_runs_ahead_of_equal_weight": 0.43333333333333335
+            "share_of_runs_ahead_of_equal_weight": 0.43333333333333335,
+            "difference_of_medians_vs_equal_weight": -0.0007110888761058809
           }
         },
         "warning": "Independent synthetic paths, not independent years of a real market."
       }
     }
-  }
+  },
+  "code_sha_role": "Existing commit of src/moex_portfolio/walk_forward.py that produced the scenario numbers. Not the commit that only updates this JSON metadata.",
+  "config_sha256": "a270908581e6831a00cde9e0466bdb5a16b6e9c3ea7d1d27db57f06f30c384a8",
+  "reproduction": {
+    "checked_fields": 168,
+    "mismatches": 0,
+    "abs_tol": 1e-12
+  },
+  "aggregation_note": "median(strategy) - median(equal_weight) is not the median of paired differences. median_excess_vs_equal_weight is the paired median."
 }

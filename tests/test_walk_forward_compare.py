@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -151,6 +152,20 @@ def test_mid_period_solver_failure_keeps_previous_weights(monkeypatch):
     assert row["steps"][1]["failure_class"] == "infeasible_constraints"
     assert row["steps"][1]["weights"] is None
     assert report["comparison_warning"] is None
+
+
+def test_saved_monte_carlo_separates_median_gap_from_paired_median():
+    path = Path(__file__).resolve().parents[1] / "docs" / "examples" / "walk_forward_monte_carlo.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["code_sha"] == "8dfea581853701ac0277cc9fa89c54b57b44b2bb"
+    assert payload["config_sha256"] == (
+        "a270908581e6831a00cde9e0466bdb5a16b6e9c3ea7d1d27db57f06f30c384a8"
+    )
+    row = payload["scenarios"]["stable"]["cost_bps_0"]["strategies"]["max_sharpe"]
+    assert row["difference_of_medians_vs_equal_weight"] != pytest.approx(
+        row["median_excess_vs_equal_weight"]
+    )
+    assert payload["reproduction"]["mismatches"] == 0
 
 
 def test_monte_carlo_uses_every_seed_on_one_path():
