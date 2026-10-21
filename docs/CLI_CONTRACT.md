@@ -12,12 +12,21 @@
 | `update-data` | fixture → runtime cache | 0 | 4 ISS/market blocked |
 | `optimize --allow-optimize` | Max Sharpe + QC | 0 | 2 QC/solver/params, 4 source |
 | `compare` | current vs last_target | 0 | 2 invalid holdings/target |
+| `propose-portfolio --prices --tickers` | проект (`proposed`), не holdings и не `last_target` | 0 | 2 lifecycle |
+| `fund-plan --weights-json --budget --currency` | денежный план (`funded`), заявок нет | 0 | 2 lifecycle / budget |
+| `read-snapshot --csv` | фактический снимок (`actual`) | 0 | 2 lifecycle |
+| `estimate-weights --snapshot-json --valuation-date` | расчётные веса (`estimated: true`), без quantity и market_value | 0 | 2 lifecycle |
 | `ingest-events [--source PATH] [--test-events]` | радар/inbox → processed | 0 | 2 partial / test-gate |
 | `build-analyst-bundle` | пакет артефактов для Аналитика | 0 | 2 missing artifacts / `RUN_IDS_REQUIRED` / `RUN_NOT_FOUND` |
 | `report --run-id` | MD/JSON по journal (новый файл под run_id команды `report`, исходный отчёт optimize/compare не перезаписывается) | 0 | 1 missing run |
 
 Коды: `0` ok, `1` unexpected/missing run, `2` бизнес/валидация (в т.ч. partial ingest),
 `3` lock, `4` источник заблокирован.
+
+`propose-portfolio`, `fund-plan`, `read-snapshot` и `estimate-weights` не пишут
+`last_target` и не заменяют `build-analyst-bundle`. Для ценовой переоценки
+вместе с `--prices` нужны `--price-return-only` и `--corporate-actions`
+(`none` или `adjusted_in_prices`). Стадии описаны в `docs/PORTFOLIO_LIFECYCLE.md`.
 
 ## Файлы
 

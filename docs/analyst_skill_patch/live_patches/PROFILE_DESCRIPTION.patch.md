@@ -57,6 +57,21 @@ CLI moex_portfolio (опционально)
 - Запрет ISS только внутри CLI-цепочки skill; штатный QC профиля не отменяется.
 ```
 
+## Изменение 5 — дополнение вставленного блока CLI (после изменения 4)
+
+Не заменяет изменения 1-4 и не переписывает D01-D32.
+К уже вставленному блоку «CLI moex_portfolio (опционально)» дописать:
+
+```text
+- Четыре команды стадий не входят в цепочку optimize/compare/bundle и не пишут last_target. Запрос на optimize их не разрешает. Запрос на стадию не разрешает optimize.
+- propose-portfolio --prices --tickers: проект (proposed). Нет фактических holdings, бюджета и заявок. Сравнение Max Sharpe, Min Variance и 1/N без победителя. Это не настоящий оптимизатор и не целевые веса.
+- fund-plan --weights-json --budget --currency: денежный план (funded). Суммы плановые, заявок нет. Это не факт.
+- read-snapshot --csv: фактический снимок (actual). target_weight и planned_value фактом не становятся.
+- estimate-weights --snapshot-json --valuation-date, плюс --returns-json или --prices: расчётные веса (estimated: true). Не факт. quantity и market_value не создаются. С --prices обязательны --price-return-only и --corporate-actions none или adjusted_in_prices. CASH на ценовой панели требует явную --cash-return.
+- Локальный синтетический прогон (fixture, Permission A) - не будущий реальный анализ. Реальные CSV и user_csv - только после отдельного разрешения (Permission B).
+- moex_analyst_bundle.v1 по-прежнему проверяется по контракту. build-analyst-bundle без --run-ids не вызывать. Корпоративные события радара не вход solver. Сделок нет. ISS, cron и routines в CLI-цепочке не включать.
+```
+
 ## Что не менять
 
 - D01–D03, D05–D07, D09–D19, D21–D32 (кроме вставок выше);

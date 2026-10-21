@@ -23,5 +23,17 @@ optimizer.yaml с enabled: false не включать; это другой пу
 штатного QC профиля.
 ```
 
-Откат: удалить абзац из `description`; убрать имя skill из D08;
+Дополнительно, не заменяя абзац выше. Это не live-правка.
+
+```text
+propose-portfolio --prices --tickers - проект без фактических holdings.
+fund-plan --weights-json --budget --currency - денежный план, не факт и не заявка.
+read-snapshot --csv - фактический снимок. target_weight и planned_value фактом не становятся.
+estimate-weights --snapshot-json --valuation-date - расчётные веса (estimated: true), не факт.
+Запрос на optimize эти команды не разрешает. Они не пишут last_target и не заменяют bundle.
+Локальная синтетика (Permission A) не является реальным анализом.
+Реальные CSV и user_csv - только после отдельного разрешения (Permission B).
+```
+
+Откат: удалить оба абзаца из `description`; убрать имя skill из D08;
 удалить skill-папку.

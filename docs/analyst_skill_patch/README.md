@@ -2,7 +2,7 @@
 
 | Файл | Назначение |
 |------|------------|
-| `cli-analyst-bundle/SKILL.md` | skill draft v2.2 (gate агент+инициатор; глобальная библиотека) |
+| `cli-analyst-bundle/SKILL.md` | skill draft v2.4 (gate агент+инициатор; стадии портфеля; глобальная библиотека) |
 | `PROFILE_SNIPPET.md` | краткий абзац (детали в live_patches) |
 | `live_patches/` | дословные патчи OPT/POS/profile/SPEC + AUDIT_BASELINE (V8) |
 | `MINIMAL_DEPLOY.md` | канонический минимальный deploy (вариант B) |

@@ -110,5 +110,92 @@ def test_skill_mentions_every_build_analyst_bundle_cli_flag(skill_text: str):
 
 
 def test_skill_version_bumped_past_v2_2(skill_text: str):
-    assert re.search(r"skill draft v2\.[3-9]", skill_text)
+    assert re.search(r"^# CLI ↔ Аналитик портфеля \(skill draft v2\.4\)$", skill_text, re.M)
     assert "skill draft v2.2" not in skill_text
+    assert "skill draft v2.3" not in skill_text
+
+
+LIFECYCLE_REQUIRED = {
+    "propose-portfolio": {"--prices", "--tickers"},
+    "fund-plan": {"--weights-json", "--budget", "--currency"},
+    "read-snapshot": {"--csv"},
+    "estimate-weights": {"--snapshot-json", "--valuation-date"},
+}
+
+
+def _required_flags_by_command(source: str) -> dict[str, set[str]]:
+    tree = ast.parse(source)
+    build = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "build_parser"
+    )
+    command_by_parser: dict[str, str] = {}
+    found: dict[str, set[str]] = {name: set() for name in LIFECYCLE_REQUIRED}
+    for stmt in build.body:
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+            call = stmt.value
+            if (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "add_parser"
+                and call.args
+                and isinstance(call.args[0], ast.Constant)
+                and isinstance(call.args[0].value, str)
+            ):
+                command_by_parser[stmt.targets[0].id] = call.args[0].value
+        if not isinstance(stmt, ast.Expr) or not isinstance(stmt.value, ast.Call):
+            continue
+        call = stmt.value
+        if not isinstance(call.func, ast.Attribute) or call.func.attr != "add_argument":
+            continue
+        if not isinstance(call.func.value, ast.Name):
+            continue
+        command = command_by_parser.get(call.func.value.id)
+        if command not in LIFECYCLE_REQUIRED or not call.args:
+            continue
+        flag = call.args[0]
+        if not isinstance(flag, ast.Constant) or not isinstance(flag.value, str):
+            continue
+        required = any(
+            kw.arg == "required" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+            for kw in call.keywords
+        )
+        if required:
+            found[command].add(flag.value)
+    return found
+
+
+def test_skill_documents_lifecycle_commands_and_required_args(skill_text: str):
+    found = _required_flags_by_command(CLI.read_text(encoding="utf-8"))
+    assert found == LIFECYCLE_REQUIRED
+    for command, flags in LIFECYCLE_REQUIRED.items():
+        assert command in skill_text
+        missing = {flag for flag in flags if flag not in skill_text}
+        assert not missing, f"{command} missing in skill: {missing}"
+    for marker in (
+        "proposed",
+        "funded",
+        "actual",
+        "estimated: true",
+        "estimation_method: relative_returns",
+        "--price-return-only",
+        "--corporate-actions",
+        "--cash-return",
+        "Permission A",
+        "Permission B",
+        "last_target",
+        "moex_analyst_bundle.v1",
+        "не вход solver",
+    ):
+        assert marker in skill_text
+    contract = CONTRACT.read_text(encoding="utf-8")
+    for command in LIFECYCLE_REQUIRED:
+        assert command in contract
+    profile = (ROOT / "docs/analyst_skill_patch/live_patches/PROFILE_DESCRIPTION.patch.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## Изменение 1 — D04" in profile
+    assert "## Изменение 4 — вставка после блока «Оптимизатор»" in profile
+    assert "Изменение 5" in profile
+    assert "bundle не заменяет вход радара" in profile
+    for command in LIFECYCLE_REQUIRED:
+        assert command in profile
