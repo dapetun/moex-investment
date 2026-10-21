@@ -1,0 +1,619 @@
+{
+  "code_sha": "bbdd4b24daa7b94cb31c5e39e0dbc982d431be6e",
+  "disclaimer": "30 independent synthetic paths per scenario. Not 30 years of the Russian market and not a selected subset.",
+  "execution_model": "same close, no spread, no slippage",
+  "scenarios": {
+    "stable": {
+      "cost_bps_0": {
+        "scenario": "stable",
+        "n_runs": 30,
+        "seed0": 1000,
+        "seeds": [
+          1000,
+          1001,
+          1002,
+          1003,
+          1004,
+          1005,
+          1006,
+          1007,
+          1008,
+          1009,
+          1010,
+          1011,
+          1012,
+          1013,
+          1014,
+          1015,
+          1016,
+          1017,
+          1018,
+          1019,
+          1020,
+          1021,
+          1022,
+          1023,
+          1024,
+          1025,
+          1026,
+          1027,
+          1028,
+          1029
+        ],
+        "parameters": {
+          "n_assets": 4,
+          "n_days": 80,
+          "train_days": 25,
+          "rebalance_every": 10,
+          "max_weight": 0.5,
+          "cost_bps": 0.0,
+          "risk_free_rate": 0.0
+        },
+        "strategies": {
+          "max_sharpe": {
+            "median_cumulative_net_return": 0.014871035225068718,
+            "iqr_cumulative_net_return": [
+              -0.00632539488973205,
+              0.051004320809974635
+            ],
+            "median_max_drawdown": -0.03346010574326219,
+            "median_one_way_turnover": 2.3235546037395522,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.007875970076692107,
+            "share_of_runs_ahead_of_equal_weight": 0.6
+          },
+          "min_variance": {
+            "median_cumulative_net_return": 0.022450290943973772,
+            "iqr_cumulative_net_return": [
+              -0.00051862662353927,
+              0.036913775420907236
+            ],
+            "median_max_drawdown": -0.023774727440416588,
+            "median_one_way_turnover": 1.6830127433442774,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.0035586149658771715,
+            "share_of_runs_ahead_of_equal_weight": 0.4
+          },
+          "equal_weight": {
+            "median_cumulative_net_return": 0.022416822920604762,
+            "iqr_cumulative_net_return": [
+              -0.0020720887346973305,
+              0.04512195187268031
+            ],
+            "median_max_drawdown": -0.024792426496392517,
+            "median_one_way_turnover": 1.0415957415185404,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.0,
+            "share_of_runs_ahead_of_equal_weight": null
+          },
+          "buy_and_hold": {
+            "median_cumulative_net_return": 0.02271903460528979,
+            "iqr_cumulative_net_return": [
+              -0.0018551218564166194,
+              0.047784997686070474
+            ],
+            "median_max_drawdown": -0.024777388306681025,
+            "median_one_way_turnover": 1.0,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 6.507502019859057e-05,
+            "share_of_runs_ahead_of_equal_weight": 0.5333333333333333
+          }
+        },
+        "warning": "Independent synthetic paths, not independent years of a real market."
+      },
+      "cost_bps_10": {
+        "scenario": "stable",
+        "n_runs": 30,
+        "seed0": 1000,
+        "seeds": [
+          1000,
+          1001,
+          1002,
+          1003,
+          1004,
+          1005,
+          1006,
+          1007,
+          1008,
+          1009,
+          1010,
+          1011,
+          1012,
+          1013,
+          1014,
+          1015,
+          1016,
+          1017,
+          1018,
+          1019,
+          1020,
+          1021,
+          1022,
+          1023,
+          1024,
+          1025,
+          1026,
+          1027,
+          1028,
+          1029
+        ],
+        "parameters": {
+          "n_assets": 4,
+          "n_days": 80,
+          "train_days": 25,
+          "rebalance_every": 10,
+          "max_weight": 0.5,
+          "cost_bps": 10.0,
+          "risk_free_rate": 0.0
+        },
+        "strategies": {
+          "max_sharpe": {
+            "median_cumulative_net_return": 0.013029901494838847,
+            "iqr_cumulative_net_return": [
+              -0.009104086993505567,
+              0.048608644590476924
+            ],
+            "median_max_drawdown": -0.033846706633507806,
+            "median_one_way_turnover": 2.3235546037395522,
+            "median_cash_cost": 0.0023352630066689898,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.0064596984259691625,
+            "share_of_runs_ahead_of_equal_weight": 0.6
+          },
+          "min_variance": {
+            "median_cumulative_net_return": 0.020670221479472617,
+            "iqr_cumulative_net_return": [
+              -0.0021964328409454226,
+              0.03486086612425582
+            ],
+            "median_max_drawdown": -0.023798270018704826,
+            "median_one_way_turnover": 1.6830127433442774,
+            "median_cash_cost": 0.0016937169881822154,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.0043402721188388615,
+            "share_of_runs_ahead_of_equal_weight": 0.36666666666666664
+          },
+          "equal_weight": {
+            "median_cumulative_net_return": 0.021344151672163414,
+            "iqr_cumulative_net_return": [
+              -0.0031086238455795834,
+              0.04403378622551224
+            ],
+            "median_max_drawdown": -0.025147358478686266,
+            "median_one_way_turnover": 1.0415957415185404,
+            "median_cash_cost": 0.001041622116717043,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.0,
+            "share_of_runs_ahead_of_equal_weight": null
+          },
+          "buy_and_hold": {
+            "median_cumulative_net_return": 0.021696315570684965,
+            "iqr_cumulative_net_return": [
+              -0.0028532667345602114,
+              0.046737212688384044
+            ],
+            "median_max_drawdown": -0.02512413695770993,
+            "median_one_way_turnover": 1.0,
+            "median_cash_cost": 0.001,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.0001055193365258611,
+            "share_of_runs_ahead_of_equal_weight": 0.5666666666666667
+          }
+        },
+        "warning": "Independent synthetic paths, not independent years of a real market."
+      }
+    },
+    "regime": {
+      "cost_bps_0": {
+        "scenario": "regime",
+        "n_runs": 30,
+        "seed0": 2000,
+        "seeds": [
+          2000,
+          2001,
+          2002,
+          2003,
+          2004,
+          2005,
+          2006,
+          2007,
+          2008,
+          2009,
+          2010,
+          2011,
+          2012,
+          2013,
+          2014,
+          2015,
+          2016,
+          2017,
+          2018,
+          2019,
+          2020,
+          2021,
+          2022,
+          2023,
+          2024,
+          2025,
+          2026,
+          2027,
+          2028,
+          2029
+        ],
+        "parameters": {
+          "n_assets": 4,
+          "n_days": 80,
+          "train_days": 25,
+          "rebalance_every": 10,
+          "max_weight": 0.5,
+          "cost_bps": 0.0,
+          "risk_free_rate": 0.0
+        },
+        "strategies": {
+          "max_sharpe": {
+            "median_cumulative_net_return": 0.006156631435070226,
+            "iqr_cumulative_net_return": [
+              -0.02656198668896853,
+              0.09808146399871903
+            ],
+            "median_max_drawdown": -0.08748931341618099,
+            "median_one_way_turnover": 2.705956289365326,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.0028339070893122487,
+            "share_of_runs_ahead_of_equal_weight": 0.5
+          },
+          "min_variance": {
+            "median_cumulative_net_return": 0.029609871390191445,
+            "iqr_cumulative_net_return": [
+              -0.022716991910224,
+              0.07254824813988353
+            ],
+            "median_max_drawdown": -0.07955429096257133,
+            "median_one_way_turnover": 1.9917735420493212,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.007839398783792584,
+            "share_of_runs_ahead_of_equal_weight": 0.4
+          },
+          "equal_weight": {
+            "median_cumulative_net_return": 0.03369873154770853,
+            "iqr_cumulative_net_return": [
+              -0.008518910078263137,
+              0.06511511881206145
+            ],
+            "median_max_drawdown": -0.07816136683958608,
+            "median_one_way_turnover": 1.0557764303354662,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.0,
+            "share_of_runs_ahead_of_equal_weight": null
+          },
+          "buy_and_hold": {
+            "median_cumulative_net_return": 0.03315628986877994,
+            "iqr_cumulative_net_return": [
+              -0.008824293780372305,
+              0.06517570813754597
+            ],
+            "median_max_drawdown": -0.07809972552693739,
+            "median_one_way_turnover": 1.0,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -7.349738753659185e-06,
+            "share_of_runs_ahead_of_equal_weight": 0.5
+          }
+        },
+        "warning": "Independent synthetic paths, not independent years of a real market."
+      },
+      "cost_bps_10": {
+        "scenario": "regime",
+        "n_runs": 30,
+        "seed0": 2000,
+        "seeds": [
+          2000,
+          2001,
+          2002,
+          2003,
+          2004,
+          2005,
+          2006,
+          2007,
+          2008,
+          2009,
+          2010,
+          2011,
+          2012,
+          2013,
+          2014,
+          2015,
+          2016,
+          2017,
+          2018,
+          2019,
+          2020,
+          2021,
+          2022,
+          2023,
+          2024,
+          2025,
+          2026,
+          2027,
+          2028,
+          2029
+        ],
+        "parameters": {
+          "n_assets": 4,
+          "n_days": 80,
+          "train_days": 25,
+          "rebalance_every": 10,
+          "max_weight": 0.5,
+          "cost_bps": 10.0,
+          "risk_free_rate": 0.0
+        },
+        "strategies": {
+          "max_sharpe": {
+            "median_cumulative_net_return": 0.0031825564470824297,
+            "iqr_cumulative_net_return": [
+              -0.029672548909537855,
+              0.09512946597069072
+            ],
+            "median_max_drawdown": -0.08808114741354317,
+            "median_one_way_turnover": 2.705956289365326,
+            "median_cash_cost": 0.002715126527305116,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.0046828500059929445,
+            "share_of_runs_ahead_of_equal_weight": 0.4666666666666667
+          },
+          "min_variance": {
+            "median_cumulative_net_return": 0.02776100718190222,
+            "iqr_cumulative_net_return": [
+              -0.024754461336127798,
+              0.0703852892464748
+            ],
+            "median_max_drawdown": -0.07994475502775872,
+            "median_one_way_turnover": 1.9917735420493212,
+            "median_cash_cost": 0.002006071033977817,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.008641515301600955,
+            "share_of_runs_ahead_of_equal_weight": 0.4
+          },
+          "equal_weight": {
+            "median_cumulative_net_return": 0.03260685028945165,
+            "iqr_cumulative_net_return": [
+              -0.009560446377361254,
+              0.06398955512177601
+            ],
+            "median_max_drawdown": -0.07817372697655312,
+            "median_one_way_turnover": 1.0557764303354662,
+            "median_cash_cost": 0.0010569335897332927,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.0,
+            "share_of_runs_ahead_of_equal_weight": null
+          },
+          "buy_and_hold": {
+            "median_cumulative_net_return": 0.03212313357891128,
+            "iqr_cumulative_net_return": [
+              -0.009815469486592149,
+              0.06411053242940784
+            ],
+            "median_max_drawdown": -0.07809972552693734,
+            "median_one_way_turnover": 1.0,
+            "median_cash_cost": 0.001,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 4.4414165084716295e-05,
+            "share_of_runs_ahead_of_equal_weight": 0.5
+          }
+        },
+        "warning": "Independent synthetic paths, not independent years of a real market."
+      }
+    },
+    "crash": {
+      "cost_bps_0": {
+        "scenario": "crash",
+        "n_runs": 30,
+        "seed0": 3000,
+        "seeds": [
+          3000,
+          3001,
+          3002,
+          3003,
+          3004,
+          3005,
+          3006,
+          3007,
+          3008,
+          3009,
+          3010,
+          3011,
+          3012,
+          3013,
+          3014,
+          3015,
+          3016,
+          3017,
+          3018,
+          3019,
+          3020,
+          3021,
+          3022,
+          3023,
+          3024,
+          3025,
+          3026,
+          3027,
+          3028,
+          3029
+        ],
+        "parameters": {
+          "n_assets": 4,
+          "n_days": 80,
+          "train_days": 25,
+          "rebalance_every": 10,
+          "max_weight": 0.5,
+          "cost_bps": 0.0,
+          "risk_free_rate": 0.0
+        },
+        "strategies": {
+          "max_sharpe": {
+            "median_cumulative_net_return": -0.26367399917857254,
+            "iqr_cumulative_net_return": [
+              -0.29769461428261423,
+              -0.2105888599209674
+            ],
+            "median_max_drawdown": -0.3195614903611356,
+            "median_one_way_turnover": 2.6570829285636877,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.017184552762946836,
+            "share_of_runs_ahead_of_equal_weight": 0.4
+          },
+          "min_variance": {
+            "median_cumulative_net_return": -0.2440257438896521,
+            "iqr_cumulative_net_return": [
+              -0.2813914678413916,
+              -0.21296482915871146
+            ],
+            "median_max_drawdown": -0.3042499949773867,
+            "median_one_way_turnover": 2.072260089574298,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.00742034733186675,
+            "share_of_runs_ahead_of_equal_weight": 0.5333333333333333
+          },
+          "equal_weight": {
+            "median_cumulative_net_return": -0.25359759569998397,
+            "iqr_cumulative_net_return": [
+              -0.280381709620611,
+              -0.22277940432230367
+            ],
+            "median_max_drawdown": -0.300077796659001,
+            "median_one_way_turnover": 1.1052532488194464,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.0,
+            "share_of_runs_ahead_of_equal_weight": null
+          },
+          "buy_and_hold": {
+            "median_cumulative_net_return": -0.2543906635588705,
+            "iqr_cumulative_net_return": [
+              -0.2813271669417563,
+              -0.22316610327426853
+            ],
+            "median_max_drawdown": -0.3005488184424197,
+            "median_one_way_turnover": 1.0,
+            "median_cash_cost": 0.0,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.0005039314594004751,
+            "share_of_runs_ahead_of_equal_weight": 0.4
+          }
+        },
+        "warning": "Independent synthetic paths, not independent years of a real market."
+      },
+      "cost_bps_10": {
+        "scenario": "crash",
+        "n_runs": 30,
+        "seed0": 3000,
+        "seeds": [
+          3000,
+          3001,
+          3002,
+          3003,
+          3004,
+          3005,
+          3006,
+          3007,
+          3008,
+          3009,
+          3010,
+          3011,
+          3012,
+          3013,
+          3014,
+          3015,
+          3016,
+          3017,
+          3018,
+          3019,
+          3020,
+          3021,
+          3022,
+          3023,
+          3024,
+          3025,
+          3026,
+          3027,
+          3028,
+          3029
+        ],
+        "parameters": {
+          "n_assets": 4,
+          "n_days": 80,
+          "train_days": 25,
+          "rebalance_every": 10,
+          "max_weight": 0.5,
+          "cost_bps": 10.0,
+          "risk_free_rate": 0.0
+        },
+        "strategies": {
+          "max_sharpe": {
+            "median_cumulative_net_return": -0.2655743150137996,
+            "iqr_cumulative_net_return": [
+              -0.29916944090326114,
+              -0.2121174203600422
+            ],
+            "median_max_drawdown": -0.3199157016996297,
+            "median_one_way_turnover": 2.6570829285636877,
+            "median_cash_cost": 0.0022972565685639964,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.017827575901804227,
+            "share_of_runs_ahead_of_equal_weight": 0.4
+          },
+          "min_variance": {
+            "median_cumulative_net_return": -0.24543275078820387,
+            "iqr_cumulative_net_return": [
+              -0.28296610395078314,
+              -0.21457472037644248
+            ],
+            "median_max_drawdown": -0.3048441268153027,
+            "median_one_way_turnover": 2.072260089574298,
+            "median_cash_cost": 0.001826896296213059,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.006789101350324511,
+            "share_of_runs_ahead_of_equal_weight": 0.5333333333333333
+          },
+          "equal_weight": {
+            "median_cumulative_net_return": -0.25442518401920566,
+            "iqr_cumulative_net_return": [
+              -0.28114939060979716,
+              -0.22363988338947652
+            ],
+            "median_max_drawdown": -0.30012087911975277,
+            "median_one_way_turnover": 1.1052532488194464,
+            "median_cash_cost": 0.001087643570284944,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": 0.0,
+            "share_of_runs_ahead_of_equal_weight": null
+          },
+          "buy_and_hold": {
+            "median_cumulative_net_return": -0.25513627289531154,
+            "iqr_cumulative_net_return": [
+              -0.28204583977481446,
+              -0.22394293717099442
+            ],
+            "median_max_drawdown": -0.30054881844241965,
+            "median_one_way_turnover": 1.0,
+            "median_cash_cost": 0.001,
+            "median_failed_attempt_share": 0.0,
+            "median_excess_vs_equal_weight": -0.00042314970879225866,
+            "share_of_runs_ahead_of_equal_weight": 0.43333333333333335
+          }
+        },
+        "warning": "Independent synthetic paths, not independent years of a real market."
+      }
+    }
+  }
+}

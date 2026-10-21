@@ -64,15 +64,30 @@ def _prepare_prices(
     start: str | None,
     end: str | None,
 ) -> tuple[pd.DataFrame, int]:
+    """Оставить календарь как есть. Пропуск не склеивается со следующим днём."""
     cols = [c for c in prices.columns if not str(c).endswith("_VALUE")]
     frame = prices[cols].sort_index()
     if start is not None:
         frame = frame.loc[frame.index >= pd.Timestamp(start)]
     if end is not None:
         frame = frame.loc[frame.index <= pd.Timestamp(end)]
-    before = len(frame)
-    frame = frame.dropna(how="any")
-    return frame.astype(float), before - len(frame)
+    numeric = frame.apply(pd.to_numeric, errors="coerce")
+    missing = int((~np.isfinite(numeric.to_numpy(dtype=float))).any(axis=1).sum())
+    return numeric, missing
+
+
+def _row_ok(row: pd.Series) -> bool:
+    values = row.to_numpy(dtype=float)
+    return bool(np.all(np.isfinite(values)) and np.all(values > 0))
+
+
+def _failure_class(message: str) -> str:
+    text = message.upper()
+    if "INFEASIBLE" in text:
+        return "infeasible_constraints"
+    if "MISSING" in text or "INSUFFICIENT" in text:
+        return "missing_data"
+    return "solver_failure"
 
 
 def _train_returns(train_prices: pd.DataFrame) -> pd.DataFrame:
@@ -120,21 +135,32 @@ def _drift(weights: np.ndarray, asset_returns: np.ndarray) -> tuple[float, np.nd
     return gross, grown / total
 
 
-def _metrics(equity: list[float], net_daily: list[float], *, risk_free_rate: float) -> dict[str, Any]:
-    if len(equity) < 2 or not net_daily:
+def _metrics(
+    equity: list[float],
+    net_daily: list[float],
+    *,
+    market_days: int,
+    risk_free_rate: float,
+) -> dict[str, Any]:
+    """CAGR и Sharpe делят год на 252 рыночных дня, не на число списаний комиссии.
+
+    Комиссия входит в ближайшую рыночную доходность, а не в лишний день.
+    На коротком ряду это годовая условная ставка, не результат одного года.
+    """
+    if len(equity) < 2 or market_days < 1:
         return {
             "cumulative_net_return": None,
             "cagr": None,
             "annualized_volatility": None,
             "annualized_sharpe": None,
             "max_drawdown": None,
+            "market_days": market_days,
         }
     net = float(equity[-1] / equity[0] - 1.0)
-    n_days = len(net_daily)
-    cagr = float((equity[-1] / equity[0]) ** (252.0 / max(n_days, 1)) - 1.0)
+    cagr = float((equity[-1] / equity[0]) ** (252.0 / market_days) - 1.0)
     series = np.asarray(net_daily, dtype=float)
-    vol = float(series.std(ddof=1) * np.sqrt(252.0)) if n_days > 1 else 0.0
-    ann_mean = float(series.mean() * 252.0)
+    vol = float(series.std(ddof=1) * np.sqrt(252.0)) if len(series) > 1 else 0.0
+    ann_mean = float(series.mean() * 252.0) if len(series) else 0.0
     sharpe = None if vol == 0 else float((ann_mean - risk_free_rate) / vol)
     peak = equity[0]
     max_dd = 0.0
@@ -148,7 +174,9 @@ def _metrics(equity: list[float], net_daily: list[float], *, risk_free_rate: flo
         "annualized_volatility": vol,
         "annualized_sharpe": sharpe,
         "max_drawdown": float(max_dd),
-        "sharpe_formula": "(mean(net daily)*252 - annual_rf) / (std(net daily)*sqrt(252))",
+        "market_days": market_days,
+        "sharpe_formula": "(mean(net market-day return)*252 - annual_rf) / (std*sqrt(252))",
+        "cagr_formula": "(final/initial)**(252/market_days) - 1",
     }
 
 
@@ -200,8 +228,19 @@ def walk_forward_compare(
             "cov_method": cov_method,
             "strategies": names,
         },
-        "rows_dropped_for_missing_prices": dropped,
+        "rows_with_missing_prices": dropped,
         "n_price_rows": int(len(frame)),
+        "execution_model": {
+            "decision": "close of the decision date",
+            "information_set": "complete closes through that date, inclusive",
+            "fill": "same close",
+            "spread_bps": 0,
+            "slippage_bps": 0,
+            "return_accrual": "new weights earn the next close-to-close return",
+            "realistic_execution": False,
+            "note": "Simplified close fill. Not an estimate of market execution.",
+        },
+        "fallback_policy": "keep drifted weights; stay in cash only if never formed",
         "strategies": {},
     }
     if len(frame) < train_days + 1:
@@ -222,6 +261,14 @@ def walk_forward_compare(
             "rebalances": 0,
             "attempts": 0,
             "failures": 0,
+            "failure_counts": {
+                "solver_failure": 0,
+                "infeasible_constraints": 0,
+                "missing_data": 0,
+            },
+            "cash_days": 0,
+            "market_days": 0,
+            "pending_fee": 0.0,
             "max_weights": [],
             "top5": [],
             "steps": [],
@@ -232,6 +279,7 @@ def walk_forward_compare(
     i = train_days - 1
     while i < len(frame) - 1:
         train = frame.iloc[i - train_days + 1 : i + 1]
+        train_complete = bool(train.apply(_row_ok, axis=1).all())
         oos_end = min(i + rebalance_every, len(frame) - 1)
         decision = frame.index[i]
         oos_start = frame.index[i + 1]
@@ -243,7 +291,13 @@ def walk_forward_compare(
             target = None
             message = "held"
             diag: dict[str, Any] = {}
-            if do_trade:
+            if do_trade and not train_complete:
+                book["attempts"] += 1
+                book["failures"] += 1
+                book["failure_counts"]["missing_data"] += 1
+                message = "missing_data"
+                turnover_status = "missing_data"
+            elif do_trade:
                 book["attempts"] += 1
                 target, message, diag = _targets(
                     train,
@@ -255,10 +309,17 @@ def walk_forward_compare(
                 )
             one_way = None
             cost = 0.0
-            turnover_status = "no_trade"
-            if target is None and do_trade:
+            failure_class = None
+            if message == "missing_data":
+                turnover_status = "missing_data"
+                failure_class = "missing_data"
+            else:
+                turnover_status = "no_trade"
+            if target is None and do_trade and message != "missing_data":
                 book["failures"] += 1
-                turnover_status = "solver_failed"
+                failure_class = _failure_class(message)
+                book["failure_counts"][failure_class] += 1
+                turnover_status = failure_class
             elif target is not None:
                 current = {col: float(w) for col, w in zip(columns, book["weights"])}
                 tgt = {col: float(w) for col, w in zip(columns, target)}
@@ -279,9 +340,8 @@ def walk_forward_compare(
                     one_way = float(assessed["one_way_turnover"])
                     cost = float(assessed["cash_cost"] or 0.0)
                     if cost and book["value"] > 0:
-                        cost_return = -cost / book["value"]
+                        book["pending_fee"] += cost / book["value"]
                         book["value"] -= cost
-                        book["net_daily"].append(cost_return)
                         book["equity"].append(book["value"])
                     book["costs"] += cost
                     book["one_way"] += one_way
@@ -301,19 +361,25 @@ def walk_forward_compare(
                 prev = frame.iloc[j - 1].to_numpy(dtype=float)
                 cur = frame.iloc[j].to_numpy(dtype=float)
                 if np.any(prev <= 0) or not np.all(np.isfinite(cur)) or not np.all(np.isfinite(prev)):
-                    book["failures"] += 1
-                    turnover_status = "missing_or_invalid_price"
-                    break
+                    book["failure_counts"]["missing_data"] += 1
+                    turnover_status = "missing_data"
+                    continue
                 asset_ret = cur / prev - 1.0
-                if float(book["weights"].sum()) == 0.0:
+                in_cash = float(book["weights"].sum()) == 0.0
+                if in_cash:
                     gross = 0.0
+                    book["cash_days"] += 1
                 else:
                     gross, drifted = _drift(book["weights"], asset_ret)
                     book["weights"] = drifted
+                fee = float(book["pending_fee"])
+                book["pending_fee"] = 0.0
+                net = (1.0 - fee) * (1.0 + gross) - 1.0
                 book["value"] *= 1.0 + gross
                 book["equity"].append(book["value"])
                 book["gross_daily"].append(gross)
-                book["net_daily"].append(gross)
+                book["net_daily"].append(net)
+                book["market_days"] += 1
                 step_gross.append(gross)
             book["steps"].append(
                 {
@@ -325,7 +391,9 @@ def walk_forward_compare(
                     "estimation": "in_sample",
                     "performance": "out_of_sample",
                     "status": message if do_trade else "buy_and_hold_no_further_trades",
+                    "failure_class": failure_class,
                     "turnover_status": turnover_status,
+                    "in_cash_after_decision": float(book["weights"].sum()) == 0.0,
                     "weights": None if target is None else [float(x) for x in target],
                     "one_way_turnover": one_way,
                     "cash_cost": cost,
@@ -336,8 +404,16 @@ def walk_forward_compare(
         i = oos_end
 
     for name, book in books.items():
-        metrics = _metrics(book["equity"], book["net_daily"], risk_free_rate=risk_free_rate)
+        metrics = _metrics(
+            book["equity"],
+            book["net_daily"],
+            market_days=int(book["market_days"]),
+            risk_free_rate=risk_free_rate,
+        )
         attempts = int(book["attempts"])
+        identity = None
+        if book["net_daily"]:
+            identity = float(np.prod(1.0 + np.asarray(book["net_daily"])) - 1.0)
         base["strategies"][name] = {
             **metrics,
             "one_way_turnover_sum": float(book["one_way"]),
@@ -345,9 +421,123 @@ def walk_forward_compare(
             "formations": int(book["formations"]),
             "rebalances": int(book["rebalances"]),
             "failed_attempt_share": None if attempts == 0 else float(book["failures"] / attempts),
+            "failure_counts": dict(book["failure_counts"]),
+            "cash_day_share": (
+                None if book["market_days"] == 0 else float(book["cash_days"] / book["market_days"])
+            ),
+            "return_identity_gap": (
+                None if identity is None or metrics["cumulative_net_return"] is None
+                else float(identity - metrics["cumulative_net_return"])
+            ),
             "mean_max_weight": None if not book["max_weights"] else float(np.mean(book["max_weights"])),
             "mean_top5_sum": None if not book["top5"] else float(np.mean(book["top5"])),
             "final_value": float(book["value"]),
             "steps": book["steps"],
         }
+    shares = [
+        row["failed_attempt_share"]
+        for row in base["strategies"].values()
+        if row["failed_attempt_share"] is not None
+    ]
+    if shares and max(shares) - min(shares) > 0:
+        base["comparison_warning"] = (
+            "Strategies have different solver-failure shares; "
+            "do not read the return gap as a pure strategy effect."
+        )
+    else:
+        base["comparison_warning"] = None
     return base
+
+
+def _quantile(values: list[float], q: float) -> float | None:
+    if not values:
+        return None
+    return float(np.quantile(np.asarray(values, dtype=float), q))
+
+
+def monte_carlo_compare(
+    *,
+    scenario: str,
+    n_runs: int = 30,
+    seed0: int = 1000,
+    n_assets: int = 4,
+    n_days: int = 80,
+    train_days: int = 25,
+    rebalance_every: int = 10,
+    max_weight: float = 0.5,
+    cost_bps: float = 0.0,
+    risk_free_rate: float = 0.0,
+) -> dict[str, Any]:
+    """Несколько синтетических путей. Это не несколько лет реального рынка.
+
+    На каждом seed все стратегии видят один и тот же ценовой путь.
+    """
+    if n_runs < 1:
+        raise ValueError("n_runs must be positive")
+    per_run: list[dict[str, Any]] = []
+    for offset in range(n_runs):
+        seed = seed0 + offset
+        prices = synthetic_price_panel(scenario, n_assets=n_assets, n_days=n_days, seed=seed)
+        report = walk_forward_compare(
+            prices,
+            train_days=train_days,
+            rebalance_every=rebalance_every,
+            max_weight=max_weight,
+            cost_bps=cost_bps,
+            risk_free_rate=risk_free_rate,
+        )
+        per_run.append(
+            {
+                "seed": seed,
+                "strategies": report["strategies"],
+                "warning": report["comparison_warning"],
+            }
+        )
+    bench = [run["strategies"]["equal_weight"]["cumulative_net_return"] for run in per_run]
+    summary: dict[str, Any] = {}
+    for name in STRATEGIES:
+        nets = [run["strategies"][name]["cumulative_net_return"] for run in per_run]
+        finite_nets = [value for value in nets if value is not None]
+        dds = [run["strategies"][name]["max_drawdown"] for run in per_run]
+        turns = [run["strategies"][name]["one_way_turnover_sum"] for run in per_run]
+        costs = [run["strategies"][name]["total_cash_cost"] for run in per_run]
+        fails = [run["strategies"][name]["failed_attempt_share"] or 0.0 for run in per_run]
+        gaps = [
+            None if net is None or base_net is None else float(net - base_net)
+            for net, base_net in zip(nets, bench)
+        ]
+        valid_gaps = [gap for gap in gaps if gap is not None]
+        summary[name] = {
+            "median_cumulative_net_return": _quantile(finite_nets, 0.5),
+            "iqr_cumulative_net_return": [
+                _quantile(finite_nets, 0.25),
+                _quantile(finite_nets, 0.75),
+            ],
+            "median_max_drawdown": _quantile([value for value in dds if value is not None], 0.5),
+            "median_one_way_turnover": _quantile(turns, 0.5),
+            "median_cash_cost": _quantile(costs, 0.5),
+            "median_failed_attempt_share": _quantile(fails, 0.5),
+            "median_excess_vs_equal_weight": _quantile(valid_gaps, 0.5),
+            "share_of_runs_ahead_of_equal_weight": (
+                None
+                if name == "equal_weight" or not valid_gaps
+                else float(sum(gap > 0 for gap in valid_gaps) / len(valid_gaps))
+            ),
+        }
+    return {
+        "scenario": scenario,
+        "n_runs": n_runs,
+        "seed0": seed0,
+        "seeds": [seed0 + offset for offset in range(n_runs)],
+        "parameters": {
+            "n_assets": n_assets,
+            "n_days": n_days,
+            "train_days": train_days,
+            "rebalance_every": rebalance_every,
+            "max_weight": max_weight,
+            "cost_bps": cost_bps,
+            "risk_free_rate": risk_free_rate,
+        },
+        "strategies": summary,
+        "warning": "Independent synthetic paths, not independent years of a real market.",
+    }

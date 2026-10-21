@@ -5,8 +5,15 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pandas as pd
+import pytest
 
-from moex_portfolio.walk_forward import synthetic_price_panel, walk_forward_compare
+from moex_portfolio.optimizer import InfeasibleWeightConstraints
+from moex_portfolio.walk_forward import (
+    monte_carlo_compare,
+    synthetic_price_panel,
+    walk_forward_compare,
+)
 
 
 def _report(**kwargs):
@@ -71,6 +78,8 @@ def test_costs_zero_when_bps_zero_and_positive_when_charged_once():
     assert formation["cash_cost"] == 1.0 * 10 / 10_000
     assert paid["strategies"]["buy_and_hold"]["total_cash_cost"] == formation["cash_cost"]
     assert paid["strategies"]["max_sharpe"]["final_value"] < free["strategies"]["max_sharpe"]["final_value"]
+    assert abs(paid["strategies"]["max_sharpe"]["return_identity_gap"]) < 1e-8
+    assert abs(free["strategies"]["buy_and_hold"]["return_identity_gap"]) < 1e-8
 
 
 def test_infeasible_limits_are_not_relaxed_and_target_file_is_untouched(tmp_path, monkeypatch):
@@ -87,9 +96,78 @@ def test_infeasible_limits_are_not_relaxed_and_target_file_is_untouched(tmp_path
     assert json.loads(target.read_text(encoding="utf-8"))["weights"]["AAA"] == 1.0
 
 
-def test_missing_prices_are_dropped_not_filled():
+def test_close_fill_identity_and_single_initial_fee():
+    idx = pd.bdate_range("2021-01-04", periods=8)
+    prices = pd.DataFrame(
+        {name: np.linspace(100, 107, 8) for name in ("A0", "A1", "A2", "A3")},
+        index=idx,
+    )
+    report = walk_forward_compare(
+        prices,
+        train_days=4,
+        rebalance_every=10,
+        strategies=["buy_and_hold"],
+        max_weight=0.5,
+        cost_bps=100,
+    )
+    row = report["strategies"]["buy_and_hold"]
+    assert report["execution_model"]["fill"] == "same close"
+    assert report["execution_model"]["realistic_execution"] is False
+    assert row["steps"][0]["train_end"] == row["steps"][0]["decision_date"]
+    assert row["steps"][0]["oos_start"] > row["steps"][0]["train_end"]
+    assert row["one_way_turnover_sum"] == 1.0
+    assert row["total_cash_cost"] == 0.01
+    assert abs(row["return_identity_gap"]) < 1e-9
+    assert row["market_days"] == 4
+    gross = prices.iloc[-1, 0] / prices.iloc[3, 0] - 1
+    assert row["final_value"] == pytest.approx(0.99 * (1 + gross), rel=1e-9)
+
+
+def test_mid_period_solver_failure_keeps_previous_weights(monkeypatch):
+    import moex_portfolio.walk_forward as walk_forward
+
+    calls = {"n": 0}
+    original = walk_forward.max_sharpe_portfolio
+
+    def flaky(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise InfeasibleWeightConstraints("INFEASIBLE_WEIGHT_CONSTRAINTS: forced")
+        return original(*args, **kwargs)
+
+    monkeypatch.setitem(walk_forward._SOLVERS, "max_sharpe", flaky)
+    prices = synthetic_price_panel("stable", n_days=40, seed=7)
+    report = walk_forward_compare(
+        prices,
+        train_days=15,
+        rebalance_every=5,
+        strategies=["max_sharpe"],
+        max_weight=0.5,
+    )
+    row = report["strategies"]["max_sharpe"]
+    assert row["formations"] == 1
+    assert row["failure_counts"]["infeasible_constraints"] >= 1
+    assert row["cash_day_share"] == 0.0
+    assert row["steps"][1]["failure_class"] == "infeasible_constraints"
+    assert row["steps"][1]["weights"] is None
+    assert report["comparison_warning"] is None
+
+
+def test_monte_carlo_uses_every_seed_on_one_path():
+    summary = monte_carlo_compare(scenario="stable", n_runs=3, seed0=20, n_days=40, train_days=15, rebalance_every=5)
+    assert summary["seeds"] == [20, 21, 22]
+    assert summary["n_runs"] == 3
+    assert "not independent years" in summary["warning"]
+    eq = summary["strategies"]["equal_weight"]["share_of_runs_ahead_of_equal_weight"]
+    assert eq is None
+
+
+def test_missing_prices_are_not_bridged():
     prices = synthetic_price_panel("crash", n_days=70, seed=5)
     prices.iloc[10, 0] = np.nan
     report = walk_forward_compare(prices, train_days=20, rebalance_every=5, max_weight=0.5)
-    assert report["rows_dropped_for_missing_prices"] == 1
+    assert report["rows_with_missing_prices"] == 1
     assert report["status"] == "ok"
+    missing = report["strategies"]["equal_weight"]["failure_counts"]["missing_data"]
+    assert missing >= 1
+    assert abs(report["strategies"]["equal_weight"]["return_identity_gap"]) < 1e-9
