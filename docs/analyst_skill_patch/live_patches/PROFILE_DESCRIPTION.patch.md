@@ -64,7 +64,7 @@ CLI moex_portfolio (опционально)
 
 ```text
 - Четыре команды стадий не входят в цепочку optimize/compare/bundle и не пишут last_target. Запрос на optimize их не разрешает. Запрос на стадию не разрешает optimize.
-- propose-portfolio --prices --tickers: проект (proposed). Нет фактических holdings, бюджета и заявок. Сравнение Max Sharpe, Min Variance и 1/N без победителя. Это не настоящий оптимизатор и не целевые веса.
+- propose-portfolio --prices --tickers: проект (proposed). Нет фактических holdings, бюджета и заявок. Сравнение Max Sharpe, Min Variance и 1/N без победителя. Это не optimize --allow-optimize и не его success или run_id. JSON: stage proposed, status project_not_holdings, execution_recommendation false, preferred_strategy null, proposals max_sharpe, min_variance и equal_weight. В отчёте только блок «Стадии портфеля (не целевые веса)». В last_target и в holdings не записывать. Числа не выдумывать.
 - fund-plan --weights-json --budget --currency: денежный план (funded). Суммы плановые, заявок нет. Это не факт.
 - read-snapshot --csv: фактический снимок (actual). target_weight и planned_value фактом не становятся.
 - estimate-weights --snapshot-json --valuation-date, плюс --returns-json или --prices: расчётные веса (estimated: true). Не факт. quantity и market_value не создаются. С --prices обязательны --price-return-only и --corporate-actions none или adjusted_in_prices. CASH на ценовой панели требует явную --cash-return.

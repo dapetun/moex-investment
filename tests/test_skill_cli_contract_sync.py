@@ -110,9 +110,10 @@ def test_skill_mentions_every_build_analyst_bundle_cli_flag(skill_text: str):
 
 
 def test_skill_version_bumped_past_v2_2(skill_text: str):
-    assert re.search(r"^# CLI ↔ Аналитик портфеля \(skill draft v2\.4\)$", skill_text, re.M)
+    assert re.search(r"^# CLI ↔ Аналитик портфеля \(skill draft v2\.5\)$", skill_text, re.M)
     assert "skill draft v2.2" not in skill_text
     assert "skill draft v2.3" not in skill_text
+    assert "skill draft v2.4" not in skill_text
 
 
 LIFECYCLE_REQUIRED = {
@@ -199,3 +200,48 @@ def test_skill_documents_lifecycle_commands_and_required_args(skill_text: str):
     assert "bundle не заменяет вход радара" in profile
     for command in LIFECYCLE_REQUIRED:
         assert command in profile
+
+
+def test_n1_proposed_weights_are_not_optimize_target(skill_text: str):
+    assert "project_not_holdings" in skill_text
+    assert "execution_recommendation: false" in skill_text
+    assert "preferred_strategy: null" in skill_text
+    assert "model_estimate: true" in skill_text
+    assert "Стадии портфеля (не целевые веса)" in skill_text
+    assert "не является `optimize --allow-optimize`" in skill_text
+    assert "Самостоятельный `propose-portfolio`" in skill_text
+    assert "она не блокирует" in skill_text
+    assert "явная фраза" in skill_text
+    assert "Запрос на стадию не разрешает optimize" in skill_text
+    profile = (ROOT / "docs/analyst_skill_patch/live_patches/PROFILE_DESCRIPTION.patch.md").read_text(
+        encoding="utf-8"
+    )
+    opt = (ROOT / "docs/analyst_skill_patch/live_patches/OPT_SKILL.patch.md").read_text(encoding="utf-8")
+    pos = (ROOT / "docs/analyst_skill_patch/live_patches/POS_SKILL.patch.md").read_text(encoding="utf-8")
+    contract = CONTRACT.read_text(encoding="utf-8")
+    for text in (profile, opt, pos, skill_text):
+        assert "Стадии портфеля (не целевые веса)" in text
+        assert "last_target" in text
+    assert "last_target" in contract
+    assert "Изменение 6" in opt
+    assert "Изменение 4" in pos
+    assert "project_not_holdings" in contract
+    assert "не holdings и не target" in contract
+
+
+def test_n3_test_events_flag_is_not_universal(skill_text: str):
+    assert "общим требованием не является" in skill_text
+    assert "Обычная сборка без нового импорта" in skill_text
+    assert "Синтетический тест событий" in skill_text
+    assert "Production-события" in skill_text
+    assert "processed/events_test" in skill_text
+    assert "events_count=0" in skill_text
+    assert "RUN_IDS_REQUIRED" in skill_text
+    assert "RUN_NOT_FOUND" in skill_text
+    assert "TEST-EV-" in skill_text
+    forbidden = "`--run-ids`, `--test-events` и приёмка bundle остаются обязательными"
+    assert forbidden not in skill_text
+    contract = CONTRACT.read_text(encoding="utf-8")
+    assert "EVENT_TEST_MODE_REQUIRED" in contract
+    assert "EVENT_PROD_IN_TEST_MODE" in contract
+    assert "`--test-events` у этой команды не обязателен" in contract

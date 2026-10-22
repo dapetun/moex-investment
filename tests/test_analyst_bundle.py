@@ -128,6 +128,36 @@ def test_cli_missing_run_exit_2(isolated_data):
     assert err["code"] == "RUN_NOT_FOUND"
 
 
+def test_cli_build_without_test_events_skips_test_store(isolated_data, tmp_path):
+    """Обычная сборка с --run-ids не читает processed/events_test."""
+    _write_holdings(isolated_data)
+    opt = _ok_run("optimize")
+    src = tmp_path / "radar_flow.json"
+    src.write_text(FLOW_FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+    ingest = ingest_events(source_path=src, test_mode=True, data_root=isolated_data)
+    assert ingest["accepted"] == 2
+    apply_event_dirs(test_mode=False, data_root=isolated_data)
+
+    buf_o, buf_e = io.StringIO(), io.StringIO()
+    with redirect_stdout(buf_o), redirect_stderr(buf_e):
+        code = main(
+            [
+                "build-analyst-bundle",
+                "--run-ids",
+                opt,
+                "--out-dir",
+                str(isolated_data / "bun-plain"),
+            ]
+        )
+    assert code == 0, buf_e.getvalue()
+    summary = json.loads(buf_o.getvalue())
+    assert summary["events_count"] == 0
+    assert summary["runs_count"] == 1
+    bundle = json.loads(Path(summary["bundle_json"]).read_text(encoding="utf-8"))
+    assert bundle["events"]["items"] == []
+    assert "events_test" not in bundle["events"]["processed_dir"].replace("\\", "/")
+
+
 def test_cli_embeds_runs_and_test_events(isolated_data, tmp_path):
     _write_holdings(isolated_data)
     opt = _ok_run("optimize")

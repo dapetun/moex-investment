@@ -342,6 +342,37 @@ def test_gap_is_refused_cash_is_explicit_and_zero_gross_is_kept():
         )
 
 
+def test_propose_json_is_project_not_optimize_target(tmp_path, monkeypatch, capsys):
+    prices = tmp_path / "prices.csv"
+    _prices().to_csv(prices, sep=";")
+    target = tmp_path / "last_target.json"
+    target.write_text('{"untouched": true}', encoding="utf-8")
+    monkeypatch.setattr("moex_portfolio.cli.LAST_TARGET_PATH", target)
+    code = main([
+        "propose-portfolio",
+        "--prices",
+        str(prices),
+        "--tickers",
+        "AAA,BBB,CCC,DDD",
+        "--max-weight",
+        "0.5",
+    ])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["stage"] == "proposed"
+    assert payload["status"] == "project_not_holdings"
+    assert payload["execution_recommendation"] is False
+    assert payload["preferred_strategy"] is None
+    assert "success" not in payload
+    assert "run_id" not in payload
+    assert set(payload["proposals"]) == {"max_sharpe", "min_variance", "equal_weight"}
+    for proposal in payload["proposals"].values():
+        assert proposal["model_estimate"] is True
+        assert "quantity" not in proposal
+        assert "market_value" not in proposal
+    assert json.loads(target.read_text(encoding="utf-8")) == {"untouched": True}
+
+
 def test_propose_command_does_not_write_target(tmp_path, monkeypatch):
     prices = tmp_path / "prices.csv"
     frame = _prices()

@@ -7,7 +7,7 @@ description: >
   отказ. Не optimizer.yaml, не ISS в CLI, не cron.
 ---
 
-# CLI ↔ Аналитик портфеля (skill draft v2.4)
+# CLI ↔ Аналитик портфеля (skill draft v2.5)
 
 **Не применять без Разрешения A** (`permissions/PERMISSION_A.md`).
 Дословные правки live: `live_patches/`. Deploy: `MINIMAL_DEPLOY.md`.
@@ -172,8 +172,9 @@ Fail-safe: любой ненулевой exit или partial bundle → **сто
 - `user_csv` (только Permission B): источник котировок `user_csv` разрешён
   владельцем как исключение из «только ISS»; свежесть — как в правилах
   stale/аттестации выше.
-- Если `news/events_latest.json` имеет `is_test: true` — явно пометить в
-  отчёте, что события тестовые.
+- Вне CLI-bundle, если штатный `news/events_latest.json` имеет `is_test: true`,
+  пометить в отчёте, что события тестовые. В сборке bundle тестовость
+  определяется по `TEST-EV-` и каталогу `events_test`, не по чтению live news.
 
 ## Валидация bundle
 
@@ -202,27 +203,57 @@ blockers `check-portfolio-ready`; `USER_CSV_TICKERS_MISSING`; ненулевой
 
 ## События радара
 
-- Штатный качественный вход профиля (не-CLI / без ingest): `news/events_latest.json`.
-- **Синтетический smoke Permission A с CLI-ingest:** только  
-  `tests/fixtures/radar_events_cli_bundle_flow.json` + `--test-events`;  
-  рабочий `news/events_latest.json` **не читать**.
-- CLI `ingest-events` — только по отдельной явной команде Даниила; не
-  подменять и не дублировать без указания источника в отчёте.
-- Оценки радара (`direction`/`confidence`/`materiality`) **не** входы Max Sharpe.
+Три случая не смешивать. `--run-ids` обязателен во всех сборках bundle.
+`--test-events` у `build-analyst-bundle` общим требованием не является:
+CLI включает его только чтобы читать `processed/events_test`.
+
+1. Обычная сборка без нового импорта событий. `ingest-events` не
+   запускать. `build-analyst-bundle --run-ids …` без `--test-events`.
+   Читается обычное `processed/events`. Если импорта не было,
+   `events_count=0` допустим. Пустой `runs[]` недопустим.
+2. Синтетический тест событий, только по отдельной явной команде
+   Даниила на fixture (Permission A). Порядок команд — в разделе
+   «Синтетический тест с событиями» выше: источник только
+   `tests/fixtures/radar_events_cli_bundle_flow.json`, id `TEST-EV-…`,
+   `ingest-events --test-events` в `processed/events_test`, затем
+   `build-analyst-bundle` с `--run-ids` и `--test-events`.
+   Рабочий `news/events_latest.json` в этом случае не читать.
+3. Production-события в CLI — только после отдельного разрешения.
+   До него live-выпуск не импортировать. `--test-events` на
+   production-выпуск не ставить.
+
+`ingest-events` — только по отдельной явной команде Даниила; не
+подменять источник. Без `--run-ids` или при отсутствующем journal
+отказ (`RUN_IDS_REQUIRED` / `RUN_NOT_FOUND`), неполный bundle не
+принимать. Оценки радара (`direction`/`confidence`/`materiality`)
+**не** входы Max Sharpe. Штатный качественный вход вне CLI —
+`news/events_latest.json`.
 
 ## Стадии портфеля
 
 Это не цепочка optimize/compare и не сборка `moex_analyst_bundle.v1`.
-`--run-ids`, `--test-events` и приёмка bundle остаются обязательными
-для `build-analyst-bundle`, как в сценарии выше. Эти четыре команды
-bundle не заменяют и `last_target` не пишут.
+Для `build-analyst-bundle` всегда обязателен `--run-ids`. Флаг
+`--test-events` у сборки обязателен только в случае 2 раздела
+«События радара», когда bundle читает хранилище после
+`ingest-events --test-events`. Обычная сборка без нового импорта
+`--test-events` не передаёт. Эти четыре команды bundle не заменяют
+и `last_target` не пишут.
 
 Каждая запускается только после Gate и отдельной явной фразы Даниила.
 Настоящий оптимизатор по-прежнему только
 `optimize --allow-optimize` с `success: true` и `run_id`.
+Проверка `success`, `run_id` и канонического target относится к этому
+optimize и к target внутри bundle. Самостоятельный `propose-portfolio`
+она не блокирует: у проекта этих полей нет, и это не ошибка.
 
 Проект, денежный план, фактический снимок и расчётные веса не подменяют
-друг друга. Локальный синтетический прогон (fixture или искусственная
+друг друга. Числа стадий брать только из JSON команды, не выдумывать
+и не пересчитывать. Вывод Аналитика не заменяет поля CLI.
+В отчёте веса стадий только в блоке «Стадии портфеля (не целевые веса)»
+с меткой `proposed`, `funded` или `estimated`. Этот блок не является
+целевыми весами оптимизатора и не делает отчёт неуспешным по правилу
+OPT/POS про веса без `success` и `run_id`.
+Локальный синтетический прогон (fixture или искусственная
 панель, Permission A) помечается баннером ДЕМОНСТРАЦИЯ. Будущий разбор
 реального портфеля требует отдельного разрешения Даниила (Permission B):
 реальные CSV и `user_csv` до него не читать. В синтетическом прогоне
@@ -233,9 +264,16 @@ bundle не заменяют и `last_target` не пишут.
 ### `propose-portfolio` — проект, не holdings
 
 Обязательные аргументы: `--prices`, `--tickers`.
-Сравнивает Max Sharpe, Min Variance и 1/N и не выбирает победителя.
-В отчёте это проект (`proposed`): нет фактических позиций, бюджета и заявок.
-Веса проекта не называть целевыми весами оптимизатора.
+Команда не является `optimize --allow-optimize` и не требует его
+`success` и `run_id`.
+JSON команды: `stage: proposed`, `status: project_not_holdings`,
+`execution_recommendation: false`, `preferred_strategy: null`.
+Три проектных распределения в `proposals`: `max_sharpe`, `min_variance`,
+`equal_weight`. У каждого `weights` и `model_estimate: true`.
+Победителя нет. Это не фактические holdings и не целевые веса.
+В отчёте только блок «Стадии портфеля (не целевые веса)» с меткой
+`proposed`. В `last_target` не записывать и как реальные позиции
+не использовать. Числа только из этого JSON.
 
 ### `fund-plan` — денежный план
 
@@ -287,7 +325,9 @@ Exit 2 и `estimated: false` — стоп, успешную переоценку
 - Не класть реальные CSV в git / публичные handoff
 - В синтетическом smoke с CLI-ingest — не читать `news/events_latest.json`
 - Не вызывать `build-analyst-bundle` без `--run-ids`; не анализировать
-  bundle с пустым / неполным `runs[]` или без ожидаемых `events[]`
+  bundle с пустым или неполным `runs[]`. В случае 2 не принимать bundle
+  без ожидаемых `TEST-EV-` в `events[]`. В случае 1 `events_count=0`
+  допустим. Не требовать `--test-events` у обычной сборки.
 - Не выдавать `proposed`, `funded` или `estimated` за фактические holdings
 - Не запускать `propose-portfolio`, `fund-plan`, `read-snapshot`,
   `estimate-weights` без отдельной явной фразы Даниила в этом чате

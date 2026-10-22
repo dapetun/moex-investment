@@ -28,6 +28,20 @@
 вместе с `--prices` нужны `--price-return-only` и `--corporate-actions`
 (`none` или `adjusted_in_prices`). Стадии описаны в `docs/PORTFOLIO_LIFECYCLE.md`.
 
+`propose-portfolio` возвращает `stage=proposed`, `status=project_not_holdings`,
+`execution_recommendation=false`, `preferred_strategy=null` и три
+`proposals` (`max_sharpe`, `min_variance`, `equal_weight`) с `weights` и
+`model_estimate=true`. Это проектные распределения, не holdings и не target
+команды `optimize --allow-optimize`. Полей `success` и `run_id` оптимизатора
+в этом JSON нет, и их отсутствие ошибкой не является.
+
+`build-analyst-bundle` всегда требует `--run-ids` (`RUN_IDS_REQUIRED`,
+`RUN_NOT_FOUND`). `--test-events` у этой команды не обязателен: с флагом
+читается `processed/events_test`, без флага — обычное `processed/events`.
+Обязательный `--test-events` относится к `ingest-events` для выпуска
+`is_test` или `TEST-EV-` (`EVENT_TEST_MODE_REQUIRED`). Production-выпуск
+с `--test-events` отклоняется (`EVENT_PROD_IN_TEST_MODE`).
+
 ## Файлы
 
 ```
