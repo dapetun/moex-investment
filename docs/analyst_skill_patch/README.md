@@ -8,6 +8,7 @@
 | `MINIMAL_DEPLOY.md` | канонический минимальный deploy (вариант B) |
 | `SAFE_DEPLOY.md` | **superseded** — архив старой процедуры |
 | `ops/DEPLOY_OPS.md` | статусы handoff / anti-parallel deploy_op_id |
+| `ops/PARTIAL_UPDATE.md` | частичный update OPT→POS→skill; H-1/H-2; UNKNOWN_PENDING; R-1 |
 | `ops/DECISION_PERMISSION_A_*.md` | письменный approve владельца |
 | `permissions/PERMISSION_A.md` | wiring на синтетике |
 | `permissions/PERMISSION_B.md` | реальный портфель (отдельно) |

@@ -36,3 +36,8 @@
 
 См. rollback в `MINIMAL_DEPLOY.md`: файлы из `$BK`, затем platform delete
 только `skill_id` этой операции (не `rm -rf`).
+
+Частичный update уже существующего `cli-analyst-bundle` + только OPT-6/POS-4
+(без description): **`ops/PARTIAL_UPDATE.md`**. Там порядок OPT → POS → skill,
+precondition SHA перед каждой записью, `UNKNOWN_PENDING` и запрет слепого
+повторного `UpdateSkill`. Не исполнять без отдельного разрешения владельца.
