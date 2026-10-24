@@ -1,0 +1,16 @@
+{
+  "note": "EXTERNAL pin for assignment — pass via --expect-json OUTSIDE PKG",
+  "expect_head": "2b368b187c8b3a6216099176c8b567314341d708",
+  "files": {
+    "scripts/minimal_deploy.py": "b03586d9f97b6c55351d73b8395d15d653ec76de4d999c69fca45f8b354f41d4",
+    "scripts/safe_deploy_guards.py": "f0e3d9c5145a75e0f93f67afcdc3e454c13b79b4fdbf1b90e5a175e1ee85098c",
+    "docs/analyst_skill_patch/cli-analyst-bundle/SKILL.md": "126d2f72b81ae374050c3540dd1aaff8338c0601596a311b71ecad54d2ad7a05",
+    "docs/analyst_skill_patch/live_patches/AUDIT_BASELINE.md": "21998697afd08a8191afda413dad1cc28901f8e49f07bd4a832a1931f6431d9f",
+    "docs/analyst_skill_patch/live_patches/OPT_SKILL.patch.md": "e8383aeb86148e50a50acdc630ac13770fb636cf668b8c567c4520528758b4a8",
+    "docs/analyst_skill_patch/live_patches/POS_SKILL.patch.md": "7a813e79c2d4bb008af37ccad7aaf12ab64a581bb2ea44d3afeac525f1953ae9",
+    "docs/analyst_skill_patch/live_patches/QC_SKILL.patch.md": "14ed89d55ee66704a7a2641667d32b64d614be421928c194a4b771ce74e76c89",
+    "docs/analyst_skill_patch/live_patches/PROFILE_DESCRIPTION.patch.md": "0a99e3914f63a912b73a1536502ff28def8afb71b7c1f700eaaa7e847ee0ac38",
+    "docs/analyst_skill_patch/live_patches/SPEC_analysis_spec.patch.md": "f07782a3ad85669ca68d84a0b3706db70297b6add26238eae3f1acedf2ec0866",
+    "docs/analyst_skill_patch/MINIMAL_DEPLOY.md": "632d2b7deeacff89da66709d812f8aa0b8878c85e6d1bbbb83a5635f527766ba"
+  }
+}
