@@ -33,16 +33,22 @@ supersedes: <prior ref or none>
 ```
 
 `deploy_op_id` уникален. Новый apply к тому же baseline **запрещён**, пока
-предыдущий op в `{submitted,accepted,running,applied}` и не `cancelled` /
-`failed` / `rolled_back` / `verified`.
+предыдущий op в `{submitted,accepted,running,applied,unknown_pending}` и
+не `cancelled` / `failed` / `rolled_back` / `verified`. Статус
+`unknown_pending` блокирует и новый `deploy_op_id` / supersedes на те же
+ресурсы, пока владелец не снимет состояние решением в RESULT (см.
+`PARTIAL_UPDATE.md`).
 
 ## Anti-parallel
 
-1. Перед submit — диагностика: нет active op, live = baseline или
-   документированное post-install состояние.
+1. Перед submit — диагностика: нет active op (включая
+   `unknown_pending`), live = baseline или документированное
+   post-install состояние.
 2. Один `deploy_op_id` на одну попытку.
 3. Повторный webhook с тем же `deploy_op_id` — идемпотентный отказ.
 4. Отмена (`cancelled`) обязательна текстом владельца или Регулятора в RESULT.
+5. Op в `unknown_pending` — запрет нового apply / supersedes на те же
+   skill id, пока RESULT владельца не снимет статус.
 
 ## Подтверждение приёма
 
