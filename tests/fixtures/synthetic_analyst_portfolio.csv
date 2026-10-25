@@ -1,0 +1,4 @@
+isin,secid,ticker,board,weight,quantity,note
+RU00TEST0001,TSTA,TSTA,TQBR,0.40,10,synthetic A
+RU00TEST0002,TSTB,TSTB,TQBR,0.35,5,synthetic B
+RU00TEST0003,TSTC,TSTC,TQBR,0.25,3,synthetic C

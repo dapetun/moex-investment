@@ -34,6 +34,20 @@ streamlit run app.py
 
 Dashboard opens at `http://localhost:8501`.
 
+### Headless CLI (Grok Bot / offline)
+
+ISS is **disabled by default** (`MOEX_ISS_ENABLED=false`) until written legal clearance. Develop on fixtures:
+
+```bash
+pip install -e ".[dev]"
+python -m moex_portfolio show-portfolio
+python -m moex_portfolio update-data
+python -m moex_portfolio validate-data
+python -m moex_portfolio optimize --allow-optimize --mode universe
+```
+
+See [docs/GROK_BOT_RUNBOOK.md](docs/GROK_BOT_RUNBOOK.md).
+
 ### Dashboard Tabs (20)
 
 | # | Tab | Description |
@@ -150,6 +164,20 @@ streamlit run app.py
 ```
 
 Дашборд откроется на `http://localhost:8501`.
+
+### Headless CLI (Grok Bot / офлайн)
+
+MOEX ISS **выключен по умолчанию** (`MOEX_ISS_ENABLED=false`) до письменного подтверждения допустимого режима. Разработка — на синтетических фикстурах:
+
+```bash
+pip install -e ".[dev]"
+python -m moex_portfolio show-portfolio
+python -m moex_portfolio update-data
+python -m moex_portfolio validate-data
+python -m moex_portfolio optimize --allow-optimize --mode universe
+```
+
+Инструкция: [docs/GROK_BOT_RUNBOOK.md](docs/GROK_BOT_RUNBOOK.md).
 
 ### Боковая панель (слева)
 

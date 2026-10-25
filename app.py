@@ -452,9 +452,13 @@ if st.sidebar.button(t("run_optimization", lang=lang), type="primary"):
     mean_ret = clique_returns.mean()
     cov = covariance_matrix(clique_returns, method=cov_method)
 
-    opt_result = max_sharpe_portfolio(mean_ret, cov, risk_free_rate=risk_free, max_weight=max_weight)
-    min_var_result = min_variance_portfolio(mean_ret, cov, max_weight=max_weight)
-    ef = efficient_frontier(mean_ret, cov, n_points=50, max_weight=max_weight)
+    try:
+        opt_result = max_sharpe_portfolio(mean_ret, cov, risk_free_rate=risk_free, max_weight=max_weight)
+        min_var_result = min_variance_portfolio(mean_ret, cov, max_weight=max_weight)
+        ef = efficient_frontier(mean_ret, cov, n_points=50, max_weight=max_weight)
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
 
     var_95 = var_historical(clique_returns, opt_result["weights"], confidence=0.95)
     cvar_95 = cvar_historical(clique_returns, opt_result["weights"], confidence=0.95)

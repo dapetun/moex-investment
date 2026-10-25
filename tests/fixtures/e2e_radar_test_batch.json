@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.1",
+  "generated_at": "2026-10-11T08:00:00+03:00",
+  "coverage_from": "2026-10-08T00:00:00+03:00",
+  "coverage_to": "2026-10-11T08:00:00+03:00",
+  "generated_by": "e2e-synthetic-radar-batch",
+  "is_test": true,
+  "notes": "Synthetic test batch for end-to-end CLI↔Analyst scenario. Tickers aligned with synthetic_prices fixture (AAA/BBB/CCC).",
+  "sources_checked": [
+    {
+      "name": "synthetic-source",
+      "url": "https://example.invalid/e2e-radar",
+      "status": "ok",
+      "checked_at": "2026-10-11T08:00:00+03:00",
+      "note": "fixture",
+      "access_method": "local"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "TEST-EV-20261011-AAA-001",
+      "issuer_name": "Synthetic Issuer AAA",
+      "ticker": "AAA",
+      "isin": "RU00AAA00001",
+      "published_at": "2026-10-10T12:00:00+03:00",
+      "event_date": "2026-10-10",
+      "source_name": "synthetic-prime",
+      "source_url": "https://example.invalid/aaa/div-001",
+      "document_url": "https://example.invalid/aaa/div-001.pdf",
+      "event_type": "dividend_recommendation",
+      "factual_summary": "СД рекомендовал дивиденд (СИНТЕТИКА AAA).",
+      "novelty": "new",
+      "materiality": "medium",
+      "equity_assessment": {
+        "materiality": "medium",
+        "direction": "positive",
+        "confidence": "medium",
+        "rationale": "Синтетическая оценка для e2e."
+      },
+      "revision": {"number": 1, "of": null}
+    },
+    {
+      "event_id": "TEST-EV-20261011-BBB-001",
+      "issuer_name": "Synthetic Issuer BBB",
+      "ticker": "BBB",
+      "isin": "RU00BBB00002",
+      "published_at": "2026-10-09T10:00:00+03:00",
+      "event_date": "2026-10-09",
+      "source_name": "synthetic-prime",
+      "source_url": "https://example.invalid/bbb/guide-001",
+      "event_type": "guidance_change",
+      "factual_summary": "Компания снизила прогноз (СИНТЕТИКА BBB).",
+      "novelty": "new",
+      "materiality": "high",
+      "equity_assessment": {
+        "materiality": "high",
+        "direction": "negative",
+        "confidence": "high",
+        "rationale": "Синтетическое событие риска для e2e."
+      },
+      "revision": {"number": 1, "of": null}
+    },
+    {
+      "event_id": "TEST-EV-20261011-CCC-001",
+      "issuer_name": "Synthetic Issuer CCC",
+      "ticker": "CCC",
+      "isin": "RU00CCC00003",
+      "published_at": "2026-10-08T09:00:00+03:00",
+      "event_date": "2026-10-08",
+      "source_name": "synthetic-prime",
+      "source_url": "https://example.invalid/ccc/noise-001",
+      "event_type": "press_release_marketing",
+      "factual_summary": "Маркетинговый пресс-релиз (СИНТЕТИКА CCC).",
+      "novelty": "duplicate",
+      "duplicate_of": "TEST-EV-20261001-CCC-000",
+      "materiality": "ignore",
+      "equity_assessment": {
+        "materiality": "ignore",
+        "direction": "unknown",
+        "confidence": "low",
+        "rationale": "Дубликат для проверки skip."
+      },
+      "revision": {"number": 1, "of": null}
+    }
+  ]
+}

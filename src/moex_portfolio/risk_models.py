@@ -8,7 +8,10 @@ from sklearn.covariance import LedoitWolf
 logger = logging.getLogger(__name__)
 
 
-def ledoit_wolf_covariance(returns: pd.DataFrame) -> pd.DataFrame:
+def ledoit_wolf_covariance(
+    returns: pd.DataFrame,
+    diagnostics: dict | None = None,
+) -> pd.DataFrame:
     """Ковариационная матрица с Ledoit-Wolf сжатием.
 
     Сжатие (shrinkage) стабилизирует оценку ковариации,
@@ -29,6 +32,11 @@ def ledoit_wolf_covariance(returns: pd.DataFrame) -> pd.DataFrame:
     logger.info(
         "Ledoit-Wolf shrinkage: alpha=%.4f", lw.shrinkage_
     )
+    if diagnostics is not None:
+        diagnostics["method"] = "ledoit_wolf"
+        diagnostics["shrinkage"] = float(lw.shrinkage_)
+        diagnostics["n_observations"] = int(len(returns.dropna()))
+        diagnostics["n_assets"] = int(returns.shape[1])
     return cov
 
 
@@ -120,6 +128,7 @@ def covariance_matrix(
     returns: pd.DataFrame,
     method: str = "sample",
     ewma_span: int = 60,
+    diagnostics: dict | None = None,
 ) -> pd.DataFrame:
     """Универсальное вычисление ковариационной матрицы.
 
@@ -132,7 +141,7 @@ def covariance_matrix(
         Ковариационная матрица.
     """
     if method == "ledoit_wolf":
-        return ledoit_wolf_covariance(returns)
+        return ledoit_wolf_covariance(returns, diagnostics=diagnostics)
     elif method == "ewma":
         return ewma_covariance(returns, span=ewma_span)
     else:

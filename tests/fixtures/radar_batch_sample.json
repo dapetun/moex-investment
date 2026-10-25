@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-10-10T12:00:00Z",
+  "generator": "corporate-radar-sample",
+  "events": [
+    {
+      "event_id": "radar-2026-001",
+      "issuer_name": "ПАО Сбербанк",
+      "ticker": "SBER",
+      "event_type": "material_fact",
+      "source_name": "e-disclosure",
+      "source_url": "https://www.e-disclosure.ru/example/sber-001",
+      "factual_summary": "Существенный факт: рекомендация дивиденда советом директоров.",
+      "published_at": "2026-10-09T15:30:00Z",
+      "facts": {
+        "dividend_per_share": 33.3,
+        "currency": "RUB"
+      },
+      "equity_score": 0.72,
+      "bond_score": 0.15,
+      "scores": {"equity": 0.72, "bond": 0.15}
+    },
+    {
+      "event_id": "radar-2026-002",
+      "issuer_name": "ПАО Газпром",
+      "ticker": "GAZP",
+      "event_type": "dividend",
+      "source_name": "smart-lab",
+      "source_url": "https://smart-lab.ru/dividends/example-gazp",
+      "factual_summary": "Прогноз дивиденда по итогам периода.",
+      "published_at": "2026-10-08",
+      "event_date": "2026-10-08",
+      "facts": {
+        "status": "forecast"
+      },
+      "equity_score": 0.55,
+      "bond_score": 0.40
+    }
+  ]
+}

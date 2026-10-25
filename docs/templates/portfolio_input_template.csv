@@ -1,0 +1,5 @@
+as_of_date,account_label,ticker,isin,secid,board,security_type,quantity,market_value,weight,notes
+2026-10-10,broker_a,EXA1,RU00EXA10001,EXA1,TQBR,share,100,300000,0.30,замените на свои SECID/ISIN; это шаблон, не портфель
+2026-10-10,broker_b,EXA1,RU00EXA10001,EXA1,TQBR,share,50,150000,0.15,тот же SECID на другом счёте — консолидируется
+2026-10-10,broker_a,EXA2,RU00EXA20002,EXA2,TQBR,share,200,250000,0.25,
+2026-10-10,broker_a,EXA3,RU00EXA30003,EXA3,TQBR,share,20,300000,0.30,

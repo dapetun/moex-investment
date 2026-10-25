@@ -1,0 +1,10 @@
+{
+  "event_type": "dividend_declared",
+  "ticker": "AAA",
+  "company": "Example Corp",
+  "title": "Рекомендация дивиденда (пример)",
+  "url": "https://example.com/dividend/aaa",
+  "published_at": "2026-10-10T10:00:00Z",
+  "source": "smart-lab",
+  "summary": "Синтетический пример для офлайн-разработки."
+}

@@ -24,11 +24,14 @@ dependencies = [
     "plotly>=5.18",
     "openpyxl>=3.1",
     "python-dateutil>=2.8",
-    "flaml[automl]>=2.3,<2.6",
 ]
 
 [project.optional-dependencies]
+# CLI на Grok Bot: pip install -e ".[dev]" достаточно (flaml/streamlit не нужны).
+# Dashboard: pip install -e ".[dashboard,ml]"
+cli = []
 dashboard = ["streamlit>=1.28"]
+ml = ["flaml[automl]>=2.3,<2.6"]
 dev = ["pytest>=7.4", "pytest-cov>=4.1"]
 
 [tool.setuptools.packages.find]

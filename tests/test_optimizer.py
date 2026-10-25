@@ -24,7 +24,7 @@ def _sample_data():
 
 def test_max_sharpe_portfolio():
     mean_returns, cov = _sample_data()
-    result = max_sharpe_portfolio(mean_returns, cov)
+    result = max_sharpe_portfolio(mean_returns, cov, max_weight=0.5)
 
     assert "weights" in result
     assert "return" in result
@@ -32,14 +32,13 @@ def test_max_sharpe_portfolio():
     assert "sharpe" in result
     assert abs(sum(result["weights"]) - 1.0) < 1e-6
     assert all(w >= 0 for w in result["weights"])
-    # With 3 assets and max_weight=0.3, auto-normalized to 1/3
-    assert all(w <= 1.0 / 3 + 1e-6 for w in result["weights"])
+    assert all(w <= 0.5 + 1e-6 for w in result["weights"])
     assert result["sharpe"] > 0
 
 
 def test_min_variance_portfolio():
     mean_returns, cov = _sample_data()
-    result = min_variance_portfolio(mean_returns, cov)
+    result = min_variance_portfolio(mean_returns, cov, max_weight=0.5)
 
     assert abs(sum(result["weights"]) - 1.0) < 1e-6
     assert all(w >= 0 for w in result["weights"])
@@ -48,7 +47,7 @@ def test_min_variance_portfolio():
 
 def test_efficient_frontier():
     mean_returns, cov = _sample_data()
-    ef = efficient_frontier(mean_returns, cov, n_points=20)
+    ef = efficient_frontier(mean_returns, cov, n_points=20, max_weight=0.5)
 
     assert len(ef) > 0
     assert "return" in ef.columns
