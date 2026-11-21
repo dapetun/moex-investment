@@ -660,22 +660,47 @@ def _archive_history(existing: dict[str, Any], dest_name: str) -> Path:
     return hist
 
 
+def _copy_raw_exclusive(src: Path, directory: Path, tag: str) -> Path:
+    """Скопировать сырые байты в новый файл. Источник не удалять и не затирать.
+
+    Имя уникально (O_EXCL). Копия сверяется с прочитанными байтами; при
+    несовпадении временный файл удаляется и ошибка уходит вызывающему.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    raw = src.read_bytes()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    suffix = src.suffix if src.suffix else ".bin"
+    last_error: OSError | None = None
+    for n in range(100):
+        name = (
+            f"{src.stem}__{tag}__{stamp}{suffix}"
+            if n == 0
+            else f"{src.stem}__{tag}__{stamp}_{n}{suffix}"
+        )
+        dest = directory / name
+        try:
+            fd = os.open(dest, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError as e:
+            last_error = e
+            continue
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(raw)
+                fh.flush()
+                os.fsync(fh.fileno())
+        except Exception:
+            dest.unlink(missing_ok=True)
+            raise
+        if dest.read_bytes() != raw:
+            dest.unlink(missing_ok=True)
+            raise OSError(f"preserved copy mismatch: {dest}")
+        return dest
+    raise OSError(f"could not allocate unique name under {directory}") from last_error
+
+
 def _archive_inbox_file(path: Path) -> Path:
-    """Сохранить исходный inbox-файл до удаления из inbox."""
-    INBOX_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    dest = INBOX_ARCHIVE_DIR / f"{path.stem}__{stamp}{path.suffix}"
-    # уникальность внутри секунды
-    if dest.exists():
-        dest = INBOX_ARCHIVE_DIR / f"{path.stem}__{stamp}_{os_getpid()}{path.suffix}"
-    shutil.copy2(path, dest)
-    return dest
-
-
-def os_getpid() -> int:
-    import os
-
-    return os.getpid()
+    """Сохранить исходный inbox-файл. Вызывающий удаляет источник сам, после успеха."""
+    return _copy_raw_exclusive(path, INBOX_ARCHIVE_DIR, "inbox")
 
 
 def _should_skip_radar_semantics(item: dict[str, Any]) -> tuple[str, str] | None:
@@ -741,8 +766,10 @@ def ingest_events(
     """Прочитать inbox (и/или ``source_path`` радара) → processed.
 
     ``source_path`` копируется в inbox без удаления оригинала (по умолчанию
-    ``keep_source=True``). Файлы из inbox после обработки уходят в
-    ``processed/inbox_archive/``, а не удаляются без следа.
+    ``keep_source=True``). Файлы из inbox после обработки копируются в
+    ``processed/inbox_archive/`` и удаляются из inbox только если копия
+    совпала побайтно. Ошибка разбора сохраняет сырые байты в ``rejected/``
+    (или в архиве); если записать копию нельзя, файл остаётся в inbox.
 
     Тестовые выпуски (``is_test: true`` и/или ``TEST-EV-*``) по умолчанию
     запрещены в обычном ``processed/events/``. Нужен ``test_mode=True``
@@ -820,15 +847,30 @@ def ingest_events(
             items = extract_event_list(raw)
             batch_meta = extract_batch_meta(raw)
         except (json.JSONDecodeError, EventValidationError) as e:
-            dest = REJECTED_DIR / f"{path.stem}__invalid.json"
-            try:
-                shutil.move(str(path), str(dest))
-            except OSError:
+            preserved: Path | None = None
+            preserve_error: OSError | None = None
+            for directory, tag in (
+                (REJECTED_DIR, "invalid"),
+                (INBOX_ARCHIVE_DIR, "invalid"),
+            ):
+                try:
+                    preserved = _copy_raw_exclusive(path, directory, tag)
+                    break
+                except OSError as io_err:
+                    preserve_error = io_err
+            if preserved is not None:
                 path.unlink(missing_ok=True)
             rejected += 1
-            details.append(
-                {"file": path.name, "status": "rejected", "error": str(e)}
-            )
+            detail: dict[str, Any] = {
+                "file": path.name,
+                "status": "rejected",
+                "error": str(e),
+                "preserved_path": str(preserved) if preserved is not None else None,
+                "inbox_retained": preserved is None,
+            }
+            if preserved is None and preserve_error is not None:
+                detail["preserve_error"] = str(preserve_error)
+            details.append(detail)
             logger.warning("Rejected inbox file %s: %s", path.name, e)
             continue
 

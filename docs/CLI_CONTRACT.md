@@ -117,7 +117,7 @@ optimize возвращает `success: false` и `code: INFEASIBLE_WEIGHT_CONST
 `tests/fixtures/radar_batch_sample.json` (legacy batch).
 
 - Канон выпуска: `/workspace/invest/news/events_latest.json` (schema 1.1).
-- Мост: `ingest-events --source <path>` (оригинал не удаляется; inbox → archive).
+- Мост: `ingest-events --source <path>` (оригинал не удаляется; inbox копируется в archive и удаляется только после побайтной сверки). Битый JSON не затирает прошлый reject и не исчезает, если каталог rejected/archive недоступен: файл остаётся в inbox.
 - Типы: union equity_rules + bond_rules.start (39) + `unknown` (RESULT 1936);
   не маппить в выдуманные `disclosure_*`.
 - `published_at: "unknown"` → reject (`PUBLISHED_AT_INVALID`).
