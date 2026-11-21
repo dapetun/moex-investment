@@ -32,7 +32,11 @@ python -m moex_portfolio ingest-events \
 ```
 
 Оригинал `--source` не удаляется. Копия в inbox после обработки
-переносится в `processed/inbox_archive/`.
+копируется в `processed/inbox_archive/` и уходит из inbox только если
+копия совпала побайтно. Битый JSON и файл, из которого нельзя извлечь
+события, сохраняются сырыми байтами в `processed/rejected/` под новым
+именем, без затирания предыдущей копии. Если записать копию нельзя,
+файл остаётся в inbox.
 
 При `partial=true` (exit 2) JSON-отчёт печатается в **stderr**, stdout пуст.
 

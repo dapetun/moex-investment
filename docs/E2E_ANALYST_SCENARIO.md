@@ -42,3 +42,5 @@ MOEX_ISS_ENABLED=false MOEX_DATA_SOURCE=fixture \
 - Не включает ISS, broker, cron, merge PR, правки профилей ботов.
 - `optimizer.yaml` не трогается (`enabled: false`).
 - События не меняют математику оптимизации.
+- Пошаговый синтетический two-bot прогон, включая отказы ingest без рынка:
+  `docs/SYNTHETIC_TWO_BOT_E2E.md`. Этот документ сам по себе запуск не разрешает.
